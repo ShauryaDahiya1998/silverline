@@ -1,0 +1,112 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import api from '../../api';
+import { useAuth } from '../../context/AuthContext';
+import { DUMMY_HISTORY_ITEMS } from '../../data/dummyHelp';
+import { formatHelpId, getStatusLabel, resolveDisplayStatus } from '../../utils/helpStatus';
+import StatusDot from '../../components/StatusDot';
+
+// Full, unfiltered list of every completed help item — reached by tapping
+// the "Help history" label on Home, which only shows a preview. Same table
+// shape as Help ongoing (Date / Help ID / Item / Status), just not limited,
+// so nothing gets lost as the list grows. Rows open /help/:id — the same
+// HelpStatus.jsx page Help ongoing rows open.
+const formatShortDate = (d) => {
+  if (!d) return '—';
+  const date = new Date(d);
+  return `${date.getDate()} ${date.toLocaleDateString('en-US', { month: 'short' })}`;
+};
+
+export default function HelpHistoryList() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const isHelper = user?.role === 'helper';
+
+  const [helps, setHelps] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const normalize = (row) => ({
+      // A helper's own self-created, not-yet-assigned offers have no
+      // assignment row, so assignment_id/assignment_status come back null —
+      // fall back to the help item's own id/status so those still get a
+      // stable key and a correct status instead of crashing into
+      // "undefined".
+      key: isHelper ? (row.assignment_id || row.help_row_id) : row.id,
+      helpRowId: isHelper ? row.help_row_id : row.id,
+      assignmentId: isHelper ? row.assignment_id : null,
+      helpId: row.help_id,
+      title: row.title,
+      subService: row.required_skills?.[0] || '—',
+      scheduledDate: row.scheduled_date,
+      createdAt: row.created_at,
+      durationHours: row.duration_hours,
+      value: row.value,
+      status: resolveDisplayStatus(row.assignment_status, row.status),
+      onTime: row.on_time,
+      ratingReceived: row.rating_received,
+      ratingGiven: row.rating_given,
+    });
+
+    api.get('/help/mine').then(res => {
+      const list = [...DUMMY_HISTORY_ITEMS, ...(res.data.history || []).map(normalize)];
+      setHelps(list);
+    }).catch(() => setHelps(DUMMY_HISTORY_ITEMS))
+      .finally(() => setLoading(false));
+  }, [isHelper]);
+
+  if (loading) {
+    return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-400 text-sm">Loading…</div>;
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-8 px-4 pb-28">
+      <div className="max-w-3xl mx-auto">
+        <h1 className="text-lg font-bold remar-green mb-5">Help history</h1>
+
+        <div className="bg-white rounded-2xl shadow-lg p-5">
+          {/* Single light-grey background across the whole list (no
+              alternating row colors — matches Home's Help history table),
+              with an inset divider line below the header and a darker-grey
+              hover so a row under the cursor/finger is easy to spot while
+              scrolling on a touchpad or phone. */}
+          <div className="rounded-lg overflow-hidden" style={{ backgroundColor: '#f0f0f1' }}>
+            <table className="w-full text-xs table-fixed">
+              <thead>
+                <tr className="text-gray-400 text-xs uppercase tracking-wide">
+                  <th className="text-left font-medium px-1.5 py-1 w-[61px]">Date</th>
+                  <th className="text-left font-medium px-1.5 py-1 w-[77px]">Help ID</th>
+                  <th className="text-left font-medium px-3 py-1">Item</th>
+                  <th className="text-center font-medium px-2 py-1 w-16">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {helps.map((h, i) => {
+                  const helpId = h.helpId || formatHelpId(i + 1);
+                  const label = getStatusLabel(h.status, h.scheduledDate);
+                  return (
+                    <tr key={h.key}
+                      onClick={() => navigate(`/help/${h.helpRowId}`)}
+                      className="cursor-pointer hover:bg-[#d6d6d8] transition">
+                      <td className="px-1.5 py-1 text-gray-600 whitespace-nowrap">{formatShortDate(h.createdAt)}</td>
+                      <td className="px-1.5 py-1 text-gray-500 truncate">{helpId}</td>
+                      <td className="px-3 py-1 text-gray-700 truncate">{h.title}</td>
+                      <td className="px-2 py-1">
+                        <span className="flex items-center justify-center" title={label}>
+                          <StatusDot label={label} />
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {helps.length === 0 && (
+                  <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-400 text-sm">No help history yet</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,67 @@
+# Render Blueprint — one Web Service that serves both the API and the built
+# React client (server/index.js already serves client/dist as static files
+# and falls back to index.html for React Router, so there's no need for a
+# separate static site or CORS setup between two services).
+#
+# Using this file: on Render, "New +" > "Blueprint", point it at this GitHub
+# repo, and Render reads this to create the service below. Every envVar with
+# "sync: false" has no value here on purpose (secrets don't belong in git) —
+# Render will prompt you to type each one in during setup, or you can fill
+# them in afterwards under the service's Environment tab.
+services:
+  - type: web
+    name: remar-app
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.x
+      # Neon Postgres connection string — production database/branch, not
+      # your local dev one.
+      - key: DATABASE_URL
+        sync: false
+      # Generate a fresh random secret for production — don't reuse the
+      # dev one from server/.env.
+      - key: JWT_SECRET
+        sync: false
+      # Outgoing email — see Going-Live-Roadmap.md re: moving off personal
+      # Gmail SMTP to a verified transactional sender (Resend is already a
+      # dependency) before relying on this for real users.
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+      # Optional — only needed if SMS/OTP-via-Twilio is actually wired up.
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false
+      # Google/Facebook OAuth — register this service's real Render/custom
+      # domain as an authorized redirect URI in both providers' consoles
+      # before this will work in production.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: FACEBOOK_APP_ID
+        sync: false
+      - key: FACEBOOK_APP_SECRET
+        sync: false
+      # WebAuthn (Face ID / Fingerprint login) needs the REAL production
+      # hostname here, not localhost — e.g. remar-app.onrender.com, or your
+      # custom domain once you attach one. WEBAUTHN_ORIGIN needs the https://
+      # scheme; WEBAUTHN_RP_ID is just the bare hostname.
+      - key: WEBAUTHN_RP_ID
+        sync: false
+      - key: WEBAUTHN_ORIGIN
+        sync: false
+      # Baked into the client bundle at build time (Vite), so these must be
+      # set BEFORE the first build, not just before runtime.
+      - key: VITE_GOOGLE_CLIENT_ID
+        sync: false
+      - key: VITE_FACEBOOK_APP_ID
+        sync: false

@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+:root {
+--remar-green: #579500;
+--remar-green-dark: #3d6a00;
+--remar-green-light: #e8f5d0;
+--remar-gray: #32373c;
+--remar-gray-light: #abb8c3;
+}
+
+body {
+font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+color: #32373c;
+/* Push all page content down slightly so it clears a phone's camera/notch
+area — env(safe-area-inset-top) accounts for the real device's cutout
+(active once installed as a PWA, thanks to viewport-fit=cover in
+index.html), plus a small fixed buffer on top of that either way. */
+padding-top: calc(env(safe-area-inset-top, 0px) + 2mm);
+}
+
+/* Hide the browser's scrollbar chrome app-wide — this is a mobile-first
+app and the visible track/thumb isn't part of the design. Scrolling itself
+is untouched, only the visual bar is suppressed. */
+html, body {
+scrollbar-width: none; /* Firefox */
+-ms-overflow-style: none; /* older Edge/IE */
+}
+html::-webkit-scrollbar, body::-webkit-scrollbar {
+display: none; /* Chrome, Safari, new Edge */
+}
+
+/* Browsers don't inherit font-family into form controls by default, so inputs,
+selects, textareas and buttons render in the OS UI font instead of matching the
+rest of the page. Force them to match, with a slightly larger, consistent size
+than the browser default. This lives in @layer base (same layer Tailwind's own
+reset uses) so any element's Tailwind text-size utility (text-xs, text-sm, etc.)
+still overrides it — without the layer, this plain CSS would win over utility
+classes regardless of specificity. */
+@layer base {
+input, select, textarea, button, optgroup {
+font-family: inherit;
+font-size: 0.95rem;
+}
+
+/* Tailwind v4 no longer defaults buttons to cursor:pointer (matching native
+browser behavior). Restore the hand cursor on every clickable control across
+the app so hover always signals "this is clickable". */
+button:not(:disabled), [role="button"], label[for], select, summary {
+cursor: pointer;
+}
+}
+
+.btn-primary {
+background-color: #579500;
+color: white;
+padding: 0.65rem 1.5rem;
+border-radius: 0.5rem;
+font-weight: 600;
+transition: background 0.2s;
+}
+.btn-primary:hover { background-color: #3d6a00; }
+
+.remar-green { color: #579500; }
+.bg-remar { background-color: #579500; }
+.bg-remar-light { background-color: #e8f5d0; }
+.border-remar { border-color: #579500; }
+.ring-remar:focus { outline: none; box-shadow: 0 0 0 2px #579500; }
+
+/* A brighter, lighter green than .bg-remar but saturated enough for white
+text/icons to stay readable on top of it (unlike the very pale
+.bg-remar-light) — used for the My Contribution metric tiles. */
+.bg-remar-mid { background-color: #7cb342; }
+.border-remar-mid { border-color: #7cb342; }
