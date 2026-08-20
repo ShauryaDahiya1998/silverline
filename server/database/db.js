@@ -553,6 +553,30 @@ ON CONFLICT (member_number) DO NOTHING`,
 console.error('Remar Store request-side account seed error:', err.message);
 }
 
+// One-time backfill — a couple of Store items (XHAA0009, XHAA0010) were
+// created before the offer/request split above existed, so they slipped
+// through with direction still NULL. That's harmless everywhere they're
+// created by a real person (direction is only ever set for Store items),
+// but for a genuine Store item it makes GET /help/store's per-role
+// scoping (helper: direction='request', beneficiary: direction='offer')
+// treat it as belonging to neither — invisible on the Helper/Beneficiary
+// Store pages and on admin's Help Available/Help Required sub-filters,
+// even though it still shows under admin's "All". Idempotent (only ever
+// touches rows still NULL), so safe to run on every startup rather than
+// as a one-off manual fix.
+try {
+await pool.query(
+`UPDATE helps h SET direction = 'offer'
+FROM helpers v WHERE v.user_id = h.created_by AND v.member_number = 'HRR0000' AND h.direction IS NULL`
+);
+await pool.query(
+`UPDATE helps h SET direction = 'request'
+FROM beneficiaries b WHERE b.user_id = h.created_by AND b.member_number = 'BRR0000' AND h.direction IS NULL`
+);
+} catch (err) {
+console.error('Store item direction backfill error:', err.message);
+}
+
 console.log('Database tables ready');
 }
 

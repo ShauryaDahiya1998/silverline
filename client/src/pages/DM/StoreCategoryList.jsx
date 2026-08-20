@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../api';
 import { useAuth } from '../../context/AuthContext';
 import { STATUS_COLORS, getStatusLabel, resolveDisplayStatus } from '../../utils/helpStatus';
@@ -15,13 +15,19 @@ const formatShortDate = (d) => {
 // category's box on the Store page. Same Date/Help ID/Item/Status table
 // shape as Help ongoing (HelpOngoingList.jsx), just scoped to GET
 // /help/store items in this category instead of the signed-in person's own.
-// Tapping a row opens the same Cancel/Request popup Map View uses (see
-// HelpDetailPopup.jsx) instead of navigating to the Help Status page —
-// helpers/beneficiaries can only request Store items, not act as their
-// "owner", so the fuller Help Status page (Requests list, Modify, etc.)
-// doesn't apply here the way it does for a real person-created item.
+// Tapping a row: for helpers/beneficiaries, opens the same Cancel/Request
+// popup Map View uses (see HelpDetailPopup.jsx) — they can only request a
+// Store item, not act as its "owner", so the fuller Help Status page
+// doesn't apply the way it does for a real person-created item. For admin,
+// though, admin effectively IS the owner of every Store item (fronted by
+// the HRR0000/BRR0000 system accounts — see db.js), so tapping instead goes
+// straight to the same Help Status page (/help/:id, HelpStatus.jsx) a Help
+// ongoing row opens, giving admin the full Requests list (accept/reject/
+// chat), withdraw-an-approved-match, Modify, and Delete — not just a
+// read-only popup.
 export default function StoreCategoryList() {
   const { category } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isHelper = user?.role === 'helper';
   // Admin is the creator of every Remar Store item (fronted by one of two
@@ -89,7 +95,7 @@ export default function StoreCategoryList() {
                   // one exists — see GET /help/store's assignment_status).
                   const label = getStatusLabel(resolveDisplayStatus(h.assignment_status, h.status), h.scheduled_date, true);
                   return (
-                    <tr key={h.id} onClick={() => setSelectedHelp(h)}
+                    <tr key={h.id} onClick={() => isAdmin ? navigate(`/help/${h.id}`) : setSelectedHelp(h)}
                       className={`cursor-pointer hover:bg-remar-light/40 transition ${i % 2 ? 'bg-gray-50/50' : 'bg-white'}`}>
                       <td className="px-1.5 py-1 text-gray-600 whitespace-nowrap">{formatShortDate(h.created_at)}</td>
                       <td className="px-1.5 py-1 text-gray-500 truncate">{h.help_id}</td>
