@@ -91,10 +91,16 @@ export default function ProfilePopup({ id, role, onClose }) {
   // separate first/middle/last), so first name and surname are derived here
   // the same way AdminHelpers.jsx's/AdminBeneficiaries.jsx's own nameFor()
   // does, from whichever full name was typed in at registration.
+  // Remar Store's system accounts (HRR0000/BRR0000) are the one exception —
+  // "Remar Store" isn't a person's first-and-last name, so splitting it on
+  // whitespace would wrongly show "First name: Remar / Surname: Store".
+  // Every name field should read "Remar Store" whole for these accounts.
+  const isStoreAccount = record?.member_number === 'HRR0000' || record?.member_number === 'BRR0000'
+    || record?.nickname === 'Remar Store' || record?.name === 'Remar Store';
   const nameParts = (record?.name || '').trim().split(/\s+/).filter(Boolean);
-  const firstName = nameParts[0] || '—';
-  const surname = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '—';
-  const middleName = nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '';
+  const firstName = isStoreAccount ? 'Remar Store' : (nameParts[0] || '—');
+  const surname = isStoreAccount ? 'Remar Store' : (nameParts.length > 1 ? nameParts[nameParts.length - 1] : '—');
+  const middleName = isStoreAccount ? '' : (nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '');
   const exactDob = record?.date_of_birth
     ? new Date(record.date_of_birth).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     : '—';

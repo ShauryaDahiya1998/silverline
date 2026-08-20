@@ -106,7 +106,7 @@ export default function Store() {
                 <ul className="space-y-1.5">
                   {rows.slice(0, 3).map(h => (
                     <li key={h.id} className="flex items-center gap-2 text-xs">
-                      <span className="text-gray-400 flex-shrink-0">{h.help_id}</span>
+                      <span className="text-gray-400 flex-shrink-0 hover:bg-remar-light/50 hover:text-gray-700 rounded px-1 -mx-1 transition">{h.help_id}</span>
                       <span className="text-gray-700 truncate">{h.title}</span>
                     </li>
                   ))}

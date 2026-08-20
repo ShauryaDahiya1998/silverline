@@ -402,7 +402,7 @@ export default function NewHelp() {
 
               {/* Field 5 — Additional description */}
               <div>
-                <label className={labelClass}>Description (brand, material, color, size etc.)</label>
+                <label className={labelClass}>Description (brand, material, color, size, activity, etc.)</label>
                 <textarea rows={3} value={description} onChange={e => setDescription(e.target.value)}
                   placeholder="Brand, colour, material, etc."
                   className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-remar resize-none" />

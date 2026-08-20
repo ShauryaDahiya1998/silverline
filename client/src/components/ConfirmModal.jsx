@@ -12,8 +12,15 @@
 export default function ConfirmModal({ open, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger, warning, onConfirm, onCancel }) {
   if (!open) return null;
   const confirmBg = danger ? 'bg-red-600' : warning ? 'bg-amber-500' : '';
+  // z-[2400] — must outrank every popup it can be triggered from while that
+  // popup is still open (HelpDetailPopup/MapView detail popup are z-[2000],
+  // HelpStatus modals/ProfilePopup/TermsModal are z-[2200], PhotoLightbox is
+  // z-[2300]). At the old z-[999] this rendered behind those popups —
+  // invisible and unclickable, just an extra dark backdrop stacking
+  // underneath — which is what made Apply/Request look like it silently
+  // did nothing.
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[999] p-4" onClick={onCancel}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2400] p-4" onClick={onCancel}>
       <div className="bg-white rounded-2xl shadow-lg max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
         {title && <h3 className="text-base font-bold text-gray-800 mb-2">{title}</h3>}
         {message && <p className="text-sm text-gray-600 mb-6 whitespace-pre-line">{message}</p>}

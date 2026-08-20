@@ -98,7 +98,9 @@ export default function StoreCategoryList() {
                     <tr key={h.id} onClick={() => isAdmin ? navigate(`/help/${h.id}`) : setSelectedHelp(h)}
                       className={`cursor-pointer hover:bg-remar-light/40 transition ${i % 2 ? 'bg-gray-50/50' : 'bg-white'}`}>
                       <td className="px-1.5 py-1 text-gray-600 whitespace-nowrap">{formatShortDate(h.created_at)}</td>
-                      <td className="px-1.5 py-1 text-gray-500 truncate">{h.help_id}</td>
+                      <td className="px-1.5 py-1 text-gray-500 truncate">
+                        <span className="hover:bg-remar-light/60 hover:text-gray-800 rounded px-1 -mx-1 transition">{h.help_id}</span>
+                      </td>
                       <td className="px-3 py-1 text-gray-700 truncate">{h.title}</td>
                       <td className="px-2 py-1">
                         <span className="flex items-center justify-center" title={label}>

@@ -22,7 +22,11 @@ export default function ErrorModal() {
   if (!message) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[999] p-4"
+    // z-[2500] — same reasoning as ConfirmModal.jsx's z-[2400]: this fires
+    // from a shared axios error handler that has no idea whether some other
+    // popup (up to z-[2400]) is already open, so it must always outrank
+    // every other overlay in the app or it renders invisibly behind one.
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2500] p-4"
       onClick={() => setMessage('')}>
       <div className="bg-white rounded-2xl shadow-lg max-w-sm w-full p-6 text-center"
         onClick={(e) => e.stopPropagation()}>

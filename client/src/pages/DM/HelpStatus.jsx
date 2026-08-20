@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api';
 import { useAuth } from '../../context/AuthContext';
@@ -10,6 +10,7 @@ import PhotoLightbox from '../../components/PhotoLightbox';
 import LogisticsTickList from '../../components/LogisticsTickList';
 import ConfirmModal from '../../components/ConfirmModal';
 import ScheduleCard from '../../components/ScheduleCard';
+import ChatWidget from '../../components/ChatWidget';
 
 // Help Status page — reached by clicking a row in Home's Help ongoing
 // table. Shows the request's details, a location-tracking placeholder, a
@@ -86,6 +87,14 @@ export default function HelpStatus() {
   const [applyLogistics, setApplyLogistics] = useState([]);
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState('');
+  // Confirm-before-send (item 4) — Request/Apply and Accept/Approve now ask
+  // "are you sure?" first, same ConfirmModal pattern already used for
+  // Delete/Revoke/Withdraw below. confirmApprove carries which specific
+  // request (assignmentId) and who it's against (person) since both the
+  // owner's Accept and admin's Approve buttons funnel through the one
+  // handleRespond('confirmed', ...) call.
+  const [confirmApply, setConfirmApply] = useState(false);
+  const [confirmApprove, setConfirmApprove] = useState(null);
 
   const refetchCounterpart = () => api.get(`/help/${id}/counterpart`).then(res => setCounterpart(res.data)).catch(() => {});
 
@@ -155,23 +164,64 @@ export default function HelpStatus() {
     }
   };
 
-  // Opens the Chats page with this person's conversation pre-selected (Chats
-  // page resolves/creates the thread itself from withUserId) — used by both
-  // the per-request Chat button and the auto-open straight after Accept.
+  // Opens this person's conversation inline in the ChatWidget (item 2)
+  // right on this page, instead of navigating away to Account > Chats —
+  // used by every Chat button below, and the auto-open straight after
+  // Accept. Threads are scoped per help item (see messages.js), so this
+  // help item's row id/display id travel along too.
+  const chatWidgetRef = useRef(null);
+  // Tracks the ChatWidget's own rendered height (it reports this back via
+  // onHeightChange — see ChatWidget.jsx) so the page can reserve enough
+  // extra bottom space to keep Modify/Delete clear of it. The widget floats
+  // via position:fixed right above the bottom nav and grows taller as more
+  // chats stack up or one is expanded, so a static padding value can't
+  // account for it — this has to track the real, current height.
+  const [chatWidgetHeight, setChatWidgetHeight] = useState(0);
   const openChat = (person) => {
     if (!person?.user_id) return;
-    // Threads are scoped per help item now (see messages.js/Messages.jsx),
-    // so this help item's row id/display id travel along too — the Chats
-    // list needs the Help ID to show, and the composer needs the row id to
-    // find/start the right thread (not just any prior thread with this
-    // same person from some other help item).
-    navigate('/messages', {
-      state: {
-        withUserId: person.user_id, withName: person.nickname || person.name || 'Chat',
-        helpRowId: help.id, helpDisplayId: shortId,
-      },
+    chatWidgetRef.current?.open({
+      userId: person.user_id, name: person.nickname || person.name || 'Chat',
+      helpRowId: help.id, helpDisplayId: shortId,
     });
   };
+
+  // General rule, not Store-specific: if a chat thread already exists for
+  // THIS help item — started by either party, at any point, e.g. admin
+  // messaging a helper before any match — it should keep showing up here
+  // as a minimized chat window every time this Help ID page loads, not
+  // only after someone explicitly taps Chat. Whoever DIDN'T send the last
+  // message sees it highlighted (unread), same highlighting the widget
+  // already does once a reply arrives while it's open. Uses help?.help_id
+  // rather than the shortId const below since this has to run before the
+  // loading/not-found early returns further down (Rules of Hooks), and
+  // shortId isn't computed until after them.
+  //
+  // Also waits on `loading` itself (not just help?.id): the "Loading…"
+  // early return further down renders in place of the whole page — including
+  // <ChatWidget> itself — for as long as `loading` is still true. help?.id
+  // can already be set by then (the /help fetch above can resolve before the
+  // sibling /help/:id/counterpart one in the same Promise.all), so without
+  // this guard the effect could fire, find chatWidgetRef.current still null
+  // (ChatWidget hasn't mounted yet), and silently do nothing — with no
+  // second chance to retry once loading flips false and ChatWidget finally
+  // mounts, since help?.id itself never changes again to re-trigger it. That
+  // race is exactly what made the minimized window fail to reappear on some
+  // page loads.
+  useEffect(() => {
+    if (!help?.id || isDemo || loading) return undefined;
+    let cancelled = false;
+    api.get('/messages/mine').then(res => {
+      if (cancelled) return;
+      const threads = (res.data || []).filter(t => t.help?.row_id === help.id && t.other_user_id && t.other_user_id !== user?.id);
+      for (const t of threads) {
+        chatWidgetRef.current?.ensureSession({
+          userId: t.other_user_id, name: t.other_name, helpRowId: help.id,
+          helpDisplayId: help.help_id || null, threadId: t.thread_id, unread: t.unread_count > 0,
+        });
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [help?.id, isDemo, user?.id, loading]);
 
   const handleRespond = async (status, assignmentId, person) => {
     if (!assignmentId) return;
@@ -458,7 +508,13 @@ export default function HelpStatus() {
     : { pickup: 'Pick up from my location', dropoff: 'I can drop off' };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4 pb-28">
+    // Extra bottom padding on top of the base pb-28 (which just clears the
+    // bottom nav) reserves room for the ChatWidget's current height plus a
+    // 5mm gap, so scrolling all the way down always leaves Modify/Delete at
+    // least 5mm above the topmost chat header instead of overlapping it —
+    // only applied once a chat is actually open (chatWidgetHeight > 0).
+    <div className="min-h-screen bg-gray-50 py-8 px-4 pb-28"
+      style={chatWidgetHeight > 0 ? { paddingBottom: `calc(7rem + ${chatWidgetHeight}px + 5mm)` } : undefined}>
       <div className="max-w-3xl mx-auto">
 
         {/* Title bar — same font as the "Help ongoing" / "Help history"
@@ -557,6 +613,20 @@ export default function HelpStatus() {
           )}
         </div>
 
+        {/* Location — admin-only, Remar Store items only. Re-surfaces the
+            city/pincode fields GET /help/:id already returns (location_city/
+            location_pincode) right below Photos, for admin's own visibility
+            into where a Store item is fulfilled from; regular Help ID pages
+            keep the Location section removed elsewhere in the app. */}
+        {isAdmin && isStoreItem && (
+          <div className="bg-white rounded-2xl shadow-lg p-5 mb-5">
+            <p className="text-xs text-gray-400 mb-1">Location</p>
+            <p className="text-sm text-gray-700">
+              {help.is_online ? 'Online' : [help.location_city, help.location_pincode].filter(Boolean).join(', ') || 'Not specified'}
+            </p>
+          </div>
+        )}
+
         {/* Counterpart profile. Admin sees both sides at once — a Helper box
             and a Beneficiary box side by side (helper left of beneficiary),
             rather than just "the counterpart" — since admin isn't a party to
@@ -576,6 +646,16 @@ export default function HelpStatus() {
               ) : (
                 <p className="text-sm font-semibold text-gray-800">Not yet assigned</p>
               )}
+              {/* Item 3 — chat with this party once matched, but only for a
+                  Store item (isStoreItem) and only the real consumer side —
+                  never the "Remar Store" creator side, a login-less system
+                  account nobody would ever read a message sent to. */}
+              {isStoreItem && helperParty && helperParty === confirmedCounterpart && (
+                <button type="button" onClick={() => openChat(helperParty)}
+                  className="text-xs font-semibold px-3.5 py-1 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50 transition">
+                  Chat
+                </button>
+              )}
             </div>
             <div className="bg-white rounded-2xl shadow-lg p-4 flex flex-col items-center justify-center text-center gap-1.5">
               <p className="text-xs text-gray-400">Beneficiary</p>
@@ -586,6 +666,12 @@ export default function HelpStatus() {
                 </button>
               ) : (
                 <p className="text-sm font-semibold text-gray-800">Not yet assigned</p>
+              )}
+              {isStoreItem && beneficiaryParty && beneficiaryParty === confirmedCounterpart && (
+                <button type="button" onClick={() => openChat(beneficiaryParty)}
+                  className="text-xs font-semibold px-3.5 py-1 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50 transition">
+                  Chat
+                </button>
               )}
             </div>
           </div>
@@ -734,7 +820,7 @@ export default function HelpStatus() {
               </div>
             )}
             {applyError && <p className="text-xs text-red-600 mb-2">{applyError}</p>}
-            <button type="button" onClick={handleApply}
+            <button type="button" onClick={() => setConfirmApply(true)}
               disabled={applying || (applyHasLogisticsOptions && applyLogistics.length === 0)}
               className="w-full text-white font-semibold text-sm rounded-lg py-2.5 transition hover:opacity-90 disabled:opacity-50"
               style={{ backgroundColor: '#3a6b00' }}>
@@ -814,13 +900,32 @@ export default function HelpStatus() {
                           </button>
                         </div>
                       </div>
+                      {/* Chat (item 3) — admin standing in for the real
+                          creator on a Remar Store item now gets a Chat option
+                          against the consumer/requester side too, same as a
+                          real helper/beneficiary creator would from the
+                          equivalent non-admin row below. Chatting with
+                          "Remar Store" itself (the creator side, a
+                          login-less system account) wouldn't reach anyone,
+                          so this is only ever offered against the consumer
+                          `p`, and only for a Store item — a regular item's
+                          creator/consumer are real people who already have
+                          their own Chat buttons elsewhere on this page. */}
+                      {isStoreItem && (
+                        <div className="flex items-center justify-center">
+                          <button type="button" onClick={() => openChat(p)}
+                            className="text-xs font-semibold px-4 py-1.5 rounded-full border border-gray-300 text-gray-700 hover:bg-white transition">
+                            Chat
+                          </button>
+                        </div>
+                      )}
                       {!isApproved && canActOnThis && (
                         <div className="flex items-center justify-center gap-3">
                           <button type="button" onClick={() => handleRespond('cancelled', p.assignment_id, p)} disabled={isBusy || isCompleted}
                             className="text-xs font-semibold px-4 py-1.5 rounded-full bg-red-600 text-white transition disabled:opacity-50 hover:opacity-90">
                             Reject
                           </button>
-                          <button type="button" onClick={() => handleRespond('confirmed', p.assignment_id, p)} disabled={isBusy || isCompleted}
+                          <button type="button" onClick={() => setConfirmApprove({ assignmentId: p.assignment_id, person: p })} disabled={isBusy || isCompleted}
                             className="text-xs font-semibold px-4 py-1.5 rounded-full bg-green-600 text-white transition disabled:opacity-50 hover:opacity-90">
                             {isBusy ? '…' : 'Approve'}
                           </button>
@@ -839,6 +944,10 @@ export default function HelpStatus() {
                       <p className="text-xs text-gray-400">{formatDate(p.created_at)}</p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      {/* This row only ever renders for a non-admin owner —
+                          admin always takes the Creator/Consumer layout
+                          branch above instead (see isAdmin return earlier in
+                          this .map, and its own Chat button for item 3). */}
                       {!isAdmin && (
                         <button type="button" onClick={() => openChat(p)}
                           className="text-xs font-semibold px-3.5 py-1.5 rounded-full border border-gray-300 text-gray-700 hover:bg-white transition">
@@ -851,7 +960,7 @@ export default function HelpStatus() {
                             className="text-xs font-semibold px-3.5 py-1.5 rounded-full border border-gray-300 text-gray-700 hover:bg-white transition disabled:opacity-50">
                             Reject
                           </button>
-                          <button type="button" onClick={() => handleRespond('confirmed', p.assignment_id, p)} disabled={isBusy || isCompleted}
+                          <button type="button" onClick={() => setConfirmApprove({ assignmentId: p.assignment_id, person: p })} disabled={isBusy || isCompleted}
                             className="text-xs font-semibold px-3.5 py-1.5 rounded-full text-white transition disabled:opacity-50" style={{ backgroundColor: '#3a6b00' }}>
                             {isBusy ? '…' : 'Accept'}
                           </button>
@@ -1079,7 +1188,27 @@ export default function HelpStatus() {
           onConfirm={() => { setConfirmModal(null); handleRespond('cancelled', myOwnRequest.assignment_id, null); }}
           onCancel={() => setConfirmModal(null)} />
 
+        {/* Item 4 — confirm before sending a Request/Apply, and before
+            Accept/Approve (covers both the creator's own Accept and admin's
+            final sign-off, since both funnel through the same handleRespond
+            call — see confirmApprove above). */}
+        <ConfirmModal open={confirmApply}
+          title={isHelper ? 'Are you sure you want to apply?' : 'Are you sure you want to request?'}
+          confirmLabel={isHelper ? 'Apply' : 'Request'}
+          onConfirm={() => { setConfirmApply(false); handleApply(); }}
+          onCancel={() => setConfirmApply(false)} />
+        <ConfirmModal open={!!confirmApprove}
+          title={isAdmin ? 'Are you sure you want to approve?' : 'Accept this request?'}
+          confirmLabel={isAdmin ? 'Approve' : 'Accept'}
+          onConfirm={() => { const c = confirmApprove; setConfirmApprove(null); handleRespond('confirmed', c.assignmentId, c.person); }}
+          onCancel={() => setConfirmApprove(null)} />
+
         {lightboxSrc && <PhotoLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
+
+        {/* Item 2/3 — inline chat widget, right above the bottom nav. Every
+            Chat button on this page (Counterpart box, Requests list, admin
+            dual box) opens into this same widget via chatWidgetRef. */}
+        <ChatWidget ref={chatWidgetRef} onHeightChange={setChatWidgetHeight} />
 
         {acceptedPerson && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2200] px-4">

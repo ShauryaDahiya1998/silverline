@@ -561,6 +561,22 @@ ORDER BY h.created_at DESC`,
 let rows = result.rows;
 if (req.user.role === 'helper') rows = rows.filter(h => h.direction === 'request');
 if (req.user.role === 'beneficiary') rows = rows.filter(h => h.direction === 'offer');
+// A helper/beneficiary should keep seeing a Store item for as long as it's
+// still up for grabs — Initiated (assignment_status null) or Requested
+// (assignment_status 'pending', including by other applicants; multiple
+// people can apply to the same Store item before admin picks one) — and
+// only lose it once it's actually been Matched/Scheduled/Completed
+// (assignment_status 'confirmed' or 'completed' — Scheduled is still
+// 'confirmed' underneath, just with help.status='assigned'+scheduled_date)
+// to somebody else. If THEY are the one who got matched/completed
+// (my_assignment_status 'confirmed'/'completed'), it stays visible to them.
+// Admin is unaffected (sees every row regardless, for review/management).
+if (req.user.role === 'helper' || req.user.role === 'beneficiary') {
+rows = rows.filter(h => {
+const taken = ['confirmed', 'completed'].includes(h.assignment_status);
+return !taken || ['confirmed', 'completed'].includes(h.my_assignment_status);
+});
+}
 // Item 5: browsing the Store list is well before any request/application
 // exists, so nobody here has been "accepted" yet — strip the full address
 // fields from every row (city/pincode is all this list ever showed anyway,

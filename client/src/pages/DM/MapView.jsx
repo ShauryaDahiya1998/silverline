@@ -5,6 +5,7 @@ import api from '../../api';
 import { formatDate } from '../../utils/helpStatus';
 import ProfilePopup from '../../components/ProfilePopup';
 import PhotoLightbox from '../../components/PhotoLightbox';
+import ConfirmModal from '../../components/ConfirmModal';
 
 // Filter-panel version of NewHelp.jsx's LOGISTICS_OPTIONS — worded from the
 // current viewer's own perspective rather than the item creator's, but the
@@ -597,6 +598,8 @@ export default function MapView() {
   const toggleAcceptedLogistics = (value) => setAcceptedLogistics((prev) =>
     (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
   useEffect(() => { setAcceptedLogistics([]); }, [detailHelp?.help?.id]);
+  // Confirm-before-send (item 4) — same pattern as HelpDetailPopup.jsx.
+  const [confirmSelect, setConfirmSelect] = useState(false);
 
   const handleSelect = async (help) => {
     setSelecting(true);
@@ -1065,7 +1068,7 @@ export default function MapView() {
                       className="flex-1 text-sm font-semibold rounded-lg py-2.5 border border-gray-300 text-gray-700 hover:bg-gray-50 transition disabled:opacity-50">
                       Cancel
                     </button>
-                    <button type="button" onClick={() => handleSelect(detailHelp.help)} disabled={requestDisabled}
+                    <button type="button" onClick={() => setConfirmSelect(true)} disabled={requestDisabled}
                       className="flex-1 text-white font-semibold text-sm rounded-lg py-2.5 transition hover:opacity-90 disabled:opacity-50"
                       style={{ backgroundColor: '#3a6b00' }}>
                       {selecting ? 'Sending…' : 'Request'}
@@ -1086,6 +1089,14 @@ export default function MapView() {
       )}
 
       {lightboxSrc && <PhotoLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
+
+      {/* Confirm-before-send (item 4) — same ConfirmModal pattern used
+          app-wide for Delete/Revoke/Withdraw. */}
+      <ConfirmModal open={confirmSelect}
+        title={isHelper ? 'Are you sure you want to apply?' : 'Are you sure you want to request?'}
+        confirmLabel={isHelper ? 'Apply' : 'Request'}
+        onConfirm={() => { setConfirmSelect(false); handleSelect(detailHelp.help); }}
+        onCancel={() => setConfirmSelect(false)} />
 
       {/* Select confirmation/error toast — self-clears after 3s (see the
           effect above). */}

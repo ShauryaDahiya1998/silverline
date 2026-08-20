@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../api';
 import { formatDate } from '../utils/helpStatus';
 import PhotoLightbox from './PhotoLightbox';
+import ConfirmModal from './ConfirmModal';
 
 // Same role-worded logistics wording as MapView.jsx's own copy (kept local
 // rather than shared — small, page-specific constant, same pattern as
@@ -30,6 +31,10 @@ export default function HelpDetailPopup({ help, onClose, isHelper, isAdmin, onSe
   const [selecting, setSelecting] = useState(false);
   const [error, setError] = useState('');
   const [lightboxSrc, setLightboxSrc] = useState(null);
+  // Confirm-before-send (item 4) — Request/Apply now asks "are you sure?"
+  // first rather than firing straight off the button, same ConfirmModal
+  // pattern already used app-wide for Delete/Revoke/Withdraw.
+  const [confirmSend, setConfirmSend] = useState(false);
 
   useEffect(() => { setAcceptedLogistics([]); setError(''); }, [help?.id]);
 
@@ -161,7 +166,7 @@ export default function HelpDetailPopup({ help, onClose, isHelper, isAdmin, onSe
                 className="flex-1 text-sm font-semibold rounded-lg py-2.5 border border-gray-300 text-gray-700 hover:bg-gray-50 transition disabled:opacity-50">
                 Cancel
               </button>
-              <button type="button" onClick={handleRequest} disabled={requestDisabled}
+              <button type="button" onClick={() => setConfirmSend(true)} disabled={requestDisabled}
                 className="flex-1 text-white font-semibold text-sm rounded-lg py-2.5 transition hover:opacity-90 disabled:opacity-50"
                 style={{ backgroundColor: '#3a6b00' }}>
                 {selecting ? 'Sending…' : (isHelper ? 'Apply' : 'Request')}
@@ -170,6 +175,11 @@ export default function HelpDetailPopup({ help, onClose, isHelper, isAdmin, onSe
           )}
         </div>
       </div>
+      <ConfirmModal open={confirmSend}
+        title={isHelper ? 'Are you sure you want to apply?' : 'Are you sure you want to request?'}
+        confirmLabel={isHelper ? 'Apply' : 'Request'}
+        onConfirm={() => { setConfirmSend(false); handleRequest(); }}
+        onCancel={() => setConfirmSend(false)} />
       <PhotoLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
     </>
   );

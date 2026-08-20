@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Registers remar-light as a real Tailwind color token (not just a plain
+CSS class) so utilities like hover:bg-remar-light and opacity-modified
+variants (bg-remar-light/40) actually get generated — Tailwind's compiler
+can't produce variant/opacity combinations for a class it doesn't know
+about via @theme, so before this those hover classes silently emitted no
+CSS at all (Store.jsx/StoreCategoryList.jsx help ID hover-highlight). */
+@theme {
+--color-remar-light: #e8f5d0;
+}
+
 :root {
 --remar-green: #579500;
 --remar-green-dark: #3d6a00;
@@ -62,7 +72,6 @@ transition: background 0.2s;
 
 .remar-green { color: #579500; }
 .bg-remar { background-color: #579500; }
-.bg-remar-light { background-color: #e8f5d0; }
 .border-remar { border-color: #579500; }
 .ring-remar:focus { outline: none; box-shadow: 0 0 0 2px #579500; }
 

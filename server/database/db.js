@@ -577,6 +577,30 @@ FROM beneficiaries b WHERE b.user_id = h.created_by AND b.member_number = 'BRR00
 console.error('Store item direction backfill error:', err.message);
 }
 
+// One-time backfill — PUT /store-location (routes/helpers.js) mirrors the
+// admin-set Store address from HRR0000 (helper-side) onto BRR0000
+// (beneficiary-side, fronts "Help Required" Store items) so both system
+// accounts always share one address — but that mirroring only runs on a
+// fresh save. If the Store address was last saved before BRR0000/that
+// mirror existed, BRR0000 was left with no address/lat/lon at all, which
+// made every 'request'-direction Store item invisible on Map View/Help
+// Universe (no coordinates to place a marker at) even though its
+// counterpart HRR0000 items showed up fine — see item 6. Copies HRR0000's
+// current address onto BRR0000 whenever they've drifted apart; idempotent
+// (a no-op once they match), so safe on every startup, and stays in sync
+// going forward regardless since PUT /store-location mirrors both ways
+// from here on.
+try {
+await pool.query(
+`UPDATE beneficiaries b SET street=h.street, house_number=h.house_number, city=h.city, pincode=h.pincode,
+latitude=h.latitude, longitude=h.longitude, address=h.address
+FROM helpers h WHERE h.member_number = 'HRR0000' AND b.member_number = 'BRR0000'
+AND h.pincode IS NOT NULL AND b.pincode IS DISTINCT FROM h.pincode`
+);
+} catch (err) {
+console.error('BRR0000 store-location backfill error:', err.message);
+}
+
 console.log('Database tables ready');
 }
 
