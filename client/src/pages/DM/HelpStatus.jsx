@@ -179,8 +179,11 @@ export default function HelpStatus() {
   const [chatWidgetHeight, setChatWidgetHeight] = useState(0);
   const openChat = (person) => {
     if (!person?.user_id) return;
+    // Chat header shows the same nickname-first, surname-not-full-name
+    // convention used everywhere else a counterparty is named in this app
+    // (see displayName in utils/helpStatus.js) — never the full name.
     chatWidgetRef.current?.open({
-      userId: person.user_id, name: person.nickname || person.name || 'Chat',
+      userId: person.user_id, name: displayName(person) || 'Chat',
       helpRowId: help.id, helpDisplayId: shortId,
     });
   };
@@ -428,9 +431,6 @@ export default function HelpStatus() {
   // still decides (per-row, below) whether Accept/Reject buttons render on
   // a still-genuinely-fresh request.
   const pendingRequests = isAdmin ? (counterpart.pending || []) : (canRespondToFreshRequests ? (counterpart.pending || []) : []);
-  const counterpartPath = confirmedCounterpart
-    ? (confirmedCounterpart.role === 'helper' ? `/helper/profile/${confirmedCounterpart.id}` : `/beneficiary/profile/${confirmedCounterpart.id}`)
-    : null;
   // isStoreItem is already computed above (it also gates
   // canRespondToFreshRequests) — reused here for the same "nobody can log in
   // to tick this side's boxes directly" reason: admin needs to see the ack
@@ -678,12 +678,18 @@ export default function HelpStatus() {
         ) : (
           <div className="bg-white rounded-2xl shadow-lg p-5 mb-5 flex flex-col items-center justify-center text-center gap-1.5">
             <p className="text-xs text-gray-400">{isHelper ? 'Beneficiary' : 'Helper'}</p>
-            <p className="text-sm font-semibold text-gray-800">{confirmedCounterpart ? displayName(confirmedCounterpart) : 'Not yet assigned'}</p>
-            <div className="flex items-center gap-2 mt-1">
-              <button type="button" disabled={!counterpartPath} onClick={() => counterpartPath && navigate(counterpartPath)}
-                className="text-xs font-semibold px-4 py-2 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-default">
-                View profile
+            {/* Nickname/surname is itself the profile popup trigger — same
+                pattern as the admin dual-box view above — so there's no
+                separate "View profile" button anywhere on this page. */}
+            {confirmedCounterpart ? (
+              <button type="button" onClick={() => setPopupPerson({ id: confirmedCounterpart.id, role: confirmedCounterpart.role })}
+                className="text-sm font-semibold text-gray-800 hover:underline">
+                {displayName(confirmedCounterpart)}
               </button>
+            ) : (
+              <p className="text-sm font-semibold text-gray-800">Not yet assigned</p>
+            )}
+            <div className="flex items-center gap-2 mt-1">
               <button type="button" disabled={!confirmedCounterpart} onClick={() => openChat(confirmedCounterpart)}
                 className="text-xs font-semibold px-4 py-2 rounded-full text-white transition disabled:opacity-40 disabled:cursor-default"
                 style={{ backgroundColor: '#3a6b00' }}>

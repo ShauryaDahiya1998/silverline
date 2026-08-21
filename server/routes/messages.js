@@ -30,19 +30,34 @@ async function senderNameFor(user, helpRowId) {
   return user.email;
 }
 
+// Last whitespace-split token of a full name — same surname-derivation
+// convention used client-side (client/src/utils/helpStatus.js's
+// deriveSurname), kept as its own small copy here since this file has no
+// access to the client's utils module.
+function deriveSurname(fullName) {
+  const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : '';
+}
+
 // Batch version of senderNameFor, keyed by user id — used by GET /mine to
 // look up every thread's "other party" display name in one query instead
-// of one per thread.
+// of one per thread. Nickname first, then surname (never the full name) —
+// matches the nickname-first display convention used everywhere else a
+// counterparty is named app-wide (see displayName in helpStatus.js), which
+// this was the one remaining place NOT following: it used to return the
+// raw full `name` column outright, which then flowed straight into every
+// ChatWidget session's header via the auto-populate effect in
+// HelpStatus.jsx (ensureSession's `name: t.other_name`).
 async function nameForUserIds(userIds) {
   if (!userIds.length) return {};
   const result = await db.query(
-    `SELECT user_id, name FROM helpers WHERE user_id = ANY($1)
+    `SELECT user_id, name, nickname FROM helpers WHERE user_id = ANY($1)
      UNION ALL
-     SELECT user_id, name FROM beneficiaries WHERE user_id = ANY($1)`,
+     SELECT user_id, name, nickname FROM beneficiaries WHERE user_id = ANY($1)`,
     [userIds]
   );
   const map = {};
-  for (const row of result.rows) map[row.user_id] = row.name;
+  for (const row of result.rows) map[row.user_id] = row.nickname || deriveSurname(row.name) || row.name;
   return map;
 }
 
