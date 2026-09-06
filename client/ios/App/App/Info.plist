@@ -54,6 +54,13 @@
 	<string>Remar accesses your photo library so you can attach an existing photo when creating or editing a Help item, or as your profile picture.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Remar uses your location so you can fill in an address automatically instead of typing it, and to show it on the Help map.</string>
+	<!-- Passkey (Face ID/Touch ID) sign-in — see PasskeyPlugin.swift. Not
+	     strictly required by ASAuthorizationPlatformPublicKeyCredentialProvider
+	     (its Face ID/Touch ID prompt is shown by the system's own Passkey UI,
+	     not this app calling LocalAuthentication directly), but included
+	     defensively since it's a cheap, harmless addition. -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>Remar uses Face ID/Touch ID to let you sign in securely without typing your password.</string>
 	<!-- remote-notification lets iOS deliver silent/background pushes and is
 	     also what makes "Background App Refresh" appear as a real toggle on
 	     this app's Settings page — see utils/pushNotifications.js. -->

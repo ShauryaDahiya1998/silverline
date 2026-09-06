@@ -1,6 +1,23 @@
-// Browser-side WebAuthn helpers — converts between the base64url strings
-// used to move challenge/credential data over JSON (axios/Express) and the
-// ArrayBuffers the navigator.credentials API actually requires.
+// WebAuthn helpers — converts between the base64url strings used to move
+// challenge/credential data over JSON (axios/Express) and whatever shape
+// each platform's own credential API actually requires.
+//
+// Two implementations live behind the same three exports below:
+//   - Browser (web deployment): navigator.credentials, as before.
+//   - Native iOS: PasskeyPlugin (client/ios/App/App/PasskeyPlugin.swift),
+//     a native platform-passkey bridge — needed because the native app is
+//     loaded from a locally bundled build (see capacitor.config.json, no
+//     "server" block), so its WKWebView's own origin is never
+//     remar-app-pq0s.onrender.com and plain browser navigator.credentials
+//     can't perform a ceremony against that RP ID at all. Every caller
+//     (Login.jsx, HelperRegister.jsx, BeneficiaryRegister.jsx,
+//     EditHelperProfile.jsx, EditBeneficiaryProfile.jsx) goes through
+//     registerCredential/getAssertion/isWebAuthnSupported only, so neither
+//     branch needs any caller-side changes.
+import { Capacitor, registerPlugin } from '@capacitor/core';
+
+const PasskeyPlugin = registerPlugin('PasskeyPlugin');
+const isNative = () => Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
 
 function base64urlToBuffer(base64url) {
   const padded = base64url.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(base64url.length / 4) * 4, '=');
@@ -18,12 +35,32 @@ function bufferToBase64url(buffer) {
 }
 
 export function isWebAuthnSupported() {
+  if (isNative()) return true; // gated by PasskeyPlugin.isAvailable() at call time instead — see below
   return typeof window !== 'undefined' && !!window.PublicKeyCredential && !!navigator.credentials;
 }
 
 // Registration — pass the object returned by POST /webauthn/register/options.
 // Resolves to the payload POST /webauthn/register/verify expects.
 export async function registerCredential(options) {
+  if (isNative()) {
+    const { value: available } = await PasskeyPlugin.isAvailable();
+    if (!available) throw new Error('Face ID/Touch ID passkeys require iOS 16 or later');
+    const result = await PasskeyPlugin.register({
+      challenge: options.challenge,
+      rpId: options.rp.id,
+      userId: options.user.id,
+      userName: options.user.name,
+      userDisplayName: options.user.displayName,
+    });
+    return {
+      rawId: result.rawId,
+      response: {
+        attestationObject: result.attestationObject,
+        clientDataJSON: result.clientDataJSON,
+      },
+    };
+  }
+
   const publicKey = {
     ...options,
     challenge: base64urlToBuffer(options.challenge),
@@ -45,8 +82,29 @@ export async function registerCredential(options) {
 // platform prompts for any resident/discoverable credential it holds for
 // this RP rather than one specific account, and hands back a userHandle
 // identifying which account was picked — that's what login/verify uses to
-// resolve the account without ever asking for an email/phone.
+// resolve the account without ever asking for an email/phone. The native
+// branch below always behaves this way (PasskeyPlugin.authenticate doesn't
+// take an allowCredentials list) since iOS's own system passkey UI already
+// only offers credentials registered for this rpId.
 export async function getAssertion(options) {
+  if (isNative()) {
+    const { value: available } = await PasskeyPlugin.isAvailable();
+    if (!available) throw new Error('Face ID/Touch ID passkeys require iOS 16 or later');
+    const result = await PasskeyPlugin.authenticate({
+      challenge: options.challenge,
+      rpId: options.rpId,
+    });
+    return {
+      rawId: result.rawId,
+      response: {
+        authenticatorData: result.authenticatorData,
+        clientDataJSON: result.clientDataJSON,
+        signature: result.signature,
+      },
+      userHandle: result.userHandle || null,
+    };
+  }
+
   const publicKey = {
     ...options,
     challenge: base64urlToBuffer(options.challenge),
