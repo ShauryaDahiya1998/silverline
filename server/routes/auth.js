@@ -155,7 +155,16 @@ const payload = await verifyGoogleToken(credential);
 if (!process.env.GOOGLE_CLIENT_ID) {
 return res.status(500).json({ error: 'Google sign-in is not configured on this server' });
 }
-if (payload.aud !== process.env.GOOGLE_CLIENT_ID) {
+// Google issues a different OAuth *client* per platform (Web, iOS,
+// Android), and an ID token's "aud" claim is always the client ID that
+// requested it — so a token from the native iOS app (GIDClientID in
+// client/ios/App/App/Info.plist) never matches the web GOOGLE_CLIENT_ID
+// this used to check exclusively, and got rejected here with this exact
+// "Invalid Google sign-in" error even though the token was perfectly
+// valid. Accept any of our own registered client IDs as a valid audience
+// instead of just the web one.
+const allowedAudiences = [process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_IOS_CLIENT_ID, process.env.GOOGLE_ANDROID_CLIENT_ID].filter(Boolean);
+if (!allowedAudiences.includes(payload.aud)) {
 return res.status(401).json({ error: 'Invalid Google sign-in' });
 }
 if (payload.email_verified !== 'true' && payload.email_verified !== true) {
