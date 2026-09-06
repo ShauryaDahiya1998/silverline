@@ -1,8 +1,5 @@
 {
   "appId": "ch.remarschweiz.app",
   "appName": "Remar",
-  "webDir": "dist",
-  "server": {
-    "url": "https://remar-app-pq0s.onrender.com"
-  }
+  "webDir": "dist"
 }
