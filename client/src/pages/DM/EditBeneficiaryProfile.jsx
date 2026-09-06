@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api';
 import { useAuth } from '../../context/AuthContext';
-import { registerCredential } from '../../utils/webauthn';
+import { registerCredential, removeCredential } from '../../utils/webauthn';
 import DateOfBirthPicker from '../../components/DateOfBirthPicker';
 import { showAppError } from '../../utils/errorBus';
 import { formatIsdCode } from '../../utils/phone';
@@ -765,9 +765,11 @@ export default function EditBeneficiaryProfile() {
       // toggle actually stops working for login, not just visually.
       if (!faceIdEnabled && initialFaceIdEnabled.current) {
         try { await api.delete('/webauthn/credentials/face', { headers: { Authorization: `Bearer ${token}` } }); } catch { /* best-effort */ }
+        await removeCredential(); // clears the on-device key too, native-only, see webauthn.js
       }
       if (!fingerprintEnabled && initialFingerprintEnabled.current) {
         try { await api.delete('/webauthn/credentials/fingerprint', { headers: { Authorization: `Bearer ${token}` } }); } catch { /* best-effort */ }
+        await removeCredential();
       }
 
       navigate('/beneficiary/profile/me');

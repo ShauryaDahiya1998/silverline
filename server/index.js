@@ -27,21 +27,6 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Apple App Site Association — required at this exact root path (no
-// extension, served over HTTPS) for the native iOS app's "Associated
-// Domains: webcredentials:" entitlement to be verified by iOS. This is what
-// lets the iOS app's own Face ID/Touch ID passkey ceremony (see
-// client/ios/App/App/PasskeyPlugin.swift) operate against this same
-// WEBAUTHN_RP_ID domain that the browser/web version already uses (see
-// routes/webauthn.js) — same server-side verification code handles both,
-// no server logic differs between a browser-originated and an
-// app-originated credential. Team ID + bundle ID below must match
-// DEVELOPMENT_TEAM / PRODUCT_BUNDLE_IDENTIFIER in
-// client/ios/App/App.xcodeproj/project.pbxproj.
-app.get('/.well-known/apple-app-site-association', (req, res) => {
-res.json({ webcredentials: { apps: ['ZJZWP62F7S.ch.remarschweiz.app'] } });
-});
-
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/helpers', require('./routes/helpers'));

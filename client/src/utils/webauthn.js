@@ -2,18 +2,23 @@
 // challenge/credential data over JSON (axios/Express) and whatever shape
 // each platform's own credential API actually requires.
 //
-// Two implementations live behind the same three exports below:
+// Two implementations live behind the same exports below:
 //   - Browser (web deployment): navigator.credentials, as before.
-//   - Native iOS: PasskeyPlugin (client/ios/App/App/PasskeyPlugin.swift),
-//     a native platform-passkey bridge — needed because the native app is
-//     loaded from a locally bundled build (see capacitor.config.json, no
-//     "server" block), so its WKWebView's own origin is never
-//     remar-app-pq0s.onrender.com and plain browser navigator.credentials
-//     can't perform a ceremony against that RP ID at all. Every caller
+//   - Native iOS: PasskeyPlugin (client/ios/App/App/PasskeyPlugin.swift) —
+//     needed because the native app is loaded from a locally bundled build
+//     (see capacitor.config.json, no "server" block), so its WKWebView's
+//     own origin is never remar-app-pq0s.onrender.com and plain browser
+//     navigator.credentials can't perform a ceremony against that RP ID at
+//     all. This isn't Apple's system Passkey UI either (that needs the
+//     "Associated Domains" capability, which Apple restricts to paid
+//     Developer Program accounts) — it's a Secure Enclave-backed key pair
+//     the plugin builds and signs with itself, gated by Face ID/Touch ID
+//     via biometryCurrentSet Keychain access control, wrapped in the same
+//     WebAuthn-shaped bytes a browser ceremony would produce. Every caller
 //     (Login.jsx, HelperRegister.jsx, BeneficiaryRegister.jsx,
 //     EditHelperProfile.jsx, EditBeneficiaryProfile.jsx) goes through
-//     registerCredential/getAssertion/isWebAuthnSupported only, so neither
-//     branch needs any caller-side changes.
+//     registerCredential/getAssertion/isWebAuthnSupported/removeCredential
+//     only, so neither branch needs any caller-side changes.
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
 const PasskeyPlugin = registerPlugin('PasskeyPlugin');
@@ -44,7 +49,7 @@ export function isWebAuthnSupported() {
 export async function registerCredential(options) {
   if (isNative()) {
     const { value: available } = await PasskeyPlugin.isAvailable();
-    if (!available) throw new Error('Face ID/Touch ID passkeys require iOS 16 or later');
+    if (!available) throw new Error('Face ID / Touch ID is not set up on this device');
     const result = await PasskeyPlugin.register({
       challenge: options.challenge,
       rpId: options.rp.id,
@@ -89,7 +94,7 @@ export async function registerCredential(options) {
 export async function getAssertion(options) {
   if (isNative()) {
     const { value: available } = await PasskeyPlugin.isAvailable();
-    if (!available) throw new Error('Face ID/Touch ID passkeys require iOS 16 or later');
+    if (!available) throw new Error('Face ID / Touch ID is not set up on this device');
     const result = await PasskeyPlugin.authenticate({
       challenge: options.challenge,
       rpId: options.rpId,
@@ -120,4 +125,16 @@ export async function getAssertion(options) {
     },
     userHandle: credential.response.userHandle ? bufferToBase64url(credential.response.userHandle) : null,
   };
+}
+
+// Native-only cleanup — call alongside DELETE /webauthn/credentials/:type
+// (see EditHelperProfile.jsx/EditBeneficiaryProfile.jsx's disable-toggle
+// path) so switching Face ID/Fingerprint off also clears the on-device
+// Secure Enclave key, rather than leaving an orphaned one behind that
+// would still trigger a Face ID prompt on next login only to then fail
+// server-side with "Unrecognized credential". No-op on web (there's
+// nothing local to clean up there — the browser/platform owns that).
+export async function removeCredential() {
+  if (!isNative()) return;
+  try { await PasskeyPlugin.removeCredential(); } catch { /* best-effort, same as the server DELETE call */ }
 }
