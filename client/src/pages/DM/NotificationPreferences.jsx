@@ -10,7 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 // shows a push banner at all, not which of these channels a change in the
 // app should go out on.
 const EVENTS = [
-  { key: 'help_status', label: 'Help Status change', description: 'When a Help item you created or requested changes status (e.g. Accepted, Matched, Completed).' },
+  { key: 'help_status', label: 'Help Status change', description: 'When a Help item you created or requested changes status.' },
   { key: 'messages', label: 'Messages', description: 'When you receive a new chat message from another member or REMAR.' },
 ];
 
@@ -177,6 +177,21 @@ export default function NotificationPreferences() {
                       })}
                     </div>
                   </div>
+
+                  {/* Only within my preferred location — matched server-side
+                      against this subscriber's own registered region
+                      (helpers/beneficiaries.preferred_regions, same source
+                      the Regions section on Register/Edit Profile saves —
+                      see server/utils/helpSubscriptions.js). Admin has no
+                      registered region of their own, so this doesn't render
+                      for them, same as it's hidden on Help Universe. */}
+                  {user?.role !== 'admin' && (
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-gray-500">Only within my preferred location</label>
+                      <ToggleSwitch on={!!helpSubscription.ownAreaOnly}
+                        onClick={() => updateSubscription({ ownAreaOnly: !helpSubscription.ownAreaOnly })} />
+                    </div>
+                  )}
 
                   <div>
                     <label className="text-xs text-gray-500 mb-1.5 block">Day &amp; time (matched against the poster's own availability)</label>

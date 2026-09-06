@@ -9,6 +9,18 @@ function timesOverlap(subFrom, subTo, slotFrom, slotTo) {
   return subFrom < slotTo && slotFrom < subTo;
 }
 
+// Great-circle distance in km — same formula MapView.jsx's shaded
+// preferred-area circle is drawn from client-side, just needed here
+// server-side too for the "Only within my preferred location" filter.
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // Settings > App preferences > Notifications > New Help Available. Called
 // (fire-and-forget, never awaited) right after a new Help item is created
 // (see routes/help.js POST /). Finds everyone of the "opposite" role from
@@ -26,7 +38,7 @@ function timesOverlap(subFrom, subTo, slotFrom, slotTo) {
 // request (relevant to helpers); a legacy admin-direct item falls back to
 // its own direction field the same way. Admins always see everything, same
 // as their existing full visibility everywhere else in the app.
-async function notifyHelpSubscribers({ helpRowId, helpId, title, category, logisticsPreference, creatorRole, direction, creatorAvailability }) {
+async function notifyHelpSubscribers({ helpRowId, helpId, title, category, logisticsPreference, creatorRole, direction, creatorAvailability, creatorLat, creatorLon }) {
   try {
     const audienceRoles = creatorRole === 'helper' ? ['beneficiary', 'admin']
       : creatorRole === 'beneficiary' ? ['helper', 'admin']
@@ -34,8 +46,20 @@ async function notifyHelpSubscribers({ helpRowId, helpId, title, category, logis
       : direction === 'request' ? ['helper', 'admin']
       : ['admin'];
 
+    // preferred_regions lives on the helpers/beneficiaries row, not on
+    // users itself (see helpers/beneficiaries.preferred_regions — same
+    // field Register/Edit Profile's Regions section and MapView.jsx's
+    // resolveOwnPreferredAreas already read) — pulled in via LEFT JOIN
+    // here so "Only within my preferred location" can be checked below
+    // without a per-subscriber follow-up query. Admin has neither row, so
+    // COALESCE just leaves it null for them (they never set ownAreaOnly
+    // anyway — see NotificationPreferences.jsx).
     const result = await db.query(
-      `SELECT id, help_subscription FROM users WHERE role = ANY($1) AND (help_subscription->>'enabled')::boolean = true`,
+      `SELECT u.id, u.help_subscription, COALESCE(h.preferred_regions, b.preferred_regions) AS preferred_regions
+       FROM users u
+       LEFT JOIN helpers h ON h.user_id = u.id
+       LEFT JOIN beneficiaries b ON b.user_id = u.id
+       WHERE u.role = ANY($1) AND (u.help_subscription->>'enabled')::boolean = true`,
       [audienceRoles]
     );
     if (!result.rows.length) return;
@@ -61,6 +85,23 @@ async function notifyHelpSubscribers({ helpRowId, helpId, title, category, logis
       if (Array.isArray(sub.logistics) && sub.logistics.length) {
         const anyMatch = Array.isArray(logisticsPreference) && logisticsPreference.some((v) => sub.logistics.includes(v));
         if (!anyMatch) continue;
+      }
+      // "Only within my preferred location" — only enforceable when both
+      // sides have real coordinates: this item's creator has a lat/lon on
+      // file, and the subscriber's own preferred_regions is saved in
+      // 'distance' mode (a center point + radius, set on Register/Edit
+      // Profile). 'areas' mode (free-text place names) needs live
+      // geocoding to resolve — not worth doing per-subscriber on every
+      // new Help post — so, like a missing creator location, it's left
+      // unfiltered (fails open) rather than silently dropping those
+      // subscribers' notifications.
+      if (sub.ownAreaOnly && creatorLat != null && creatorLon != null) {
+        const region = row.preferred_regions;
+        if (region?.mode === 'distance' && region.center?.lat != null && region.center?.lon != null) {
+          const radiusKm = Number(region.distance_km) > 0 ? Number(region.distance_km) : 8;
+          const distKm = haversineKm(creatorLat, creatorLon, Number(region.center.lat), Number(region.center.lon));
+          if (distKm > radiusKm) continue;
+        }
       }
 
       notifyUser(row.id, 'new_help', {

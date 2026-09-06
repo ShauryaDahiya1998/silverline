@@ -824,12 +824,18 @@ const { type: deviceType, brand: deviceBrand } = parseDevice(userAgent);
 // way) in the same query, aliased to a common name — needed below to match
 // subscribers' Day/Time filter (see notifyHelpSubscribers) against
 // whoever's actually posting this item, not the subscriber's own schedule.
+// Also pulls this creator's own latitude/longitude in the same query —
+// needed below to match subscribers' "Only within my preferred location"
+// filter (see notifyHelpSubscribers) against whoever's actually posting
+// this item.
 const addressRes = creatorRole === 'admin' ? null : await db.query(
-`SELECT address, ${creatorRole === 'helper' ? 'availability' : 'time_preferences'} AS availability FROM ${creatorRole === 'helper' ? 'helpers' : 'beneficiaries'} WHERE user_id = $1`,
+`SELECT address, latitude, longitude, ${creatorRole === 'helper' ? 'availability' : 'time_preferences'} AS availability FROM ${creatorRole === 'helper' ? 'helpers' : 'beneficiaries'} WHERE user_id = $1`,
 [createdBy]
 );
 const ownAddress = addressRes?.rows[0]?.address || null;
 const creatorAvailability = addressRes?.rows[0]?.availability || null;
+const creatorLat = addressRes?.rows[0]?.latitude != null ? Number(addressRes.rows[0].latitude) : null;
+const creatorLon = addressRes?.rows[0]?.longitude != null ? Number(addressRes.rows[0].longitude) : null;
 const result = await db.query(
 `INSERT INTO helps (title, description, created_by, required_skills, location, scheduled_date, duration_hours, category, sub_category, quantity, unit, condition, age_value, age_unit, help_id, created_ip, created_user_agent, device_type, device_brand, photo_urls, direction, logistics_preference,
   is_online, confirm_street, confirm_house_number, confirm_city, confirm_pincode, confirm_latitude, confirm_longitude)
@@ -863,6 +869,8 @@ logisticsPreference,
 creatorRole,
 direction: (isAdminDirect || isStoreItem) ? direction : null,
 creatorAvailability,
+creatorLat,
+creatorLon,
 });
 
 res.status(201).json(result.rows[0]);

@@ -204,14 +204,22 @@ async function geocodeFallback(address) {
 // /help/map),
 // grouped by person into one marker each — one helper or beneficiary can
 // have several open items at once, but only needs a single pin collecting
-// every category they currently have open. Only rows created by `role`
-// are relevant (a helper's map shows beneficiaries requesting help, and
-// vice versa — see entityRole below).
+// every category they currently have open. Rows created by `role` are
+// relevant (a helper's map shows beneficiaries requesting help, and vice
+// versa — see entityRole below); pass role=null (admin's All Help
+// Available or Required — item 3) to load every creator role at once,
+// each person still tagged with their own role (see `role:` below) so the
+// admin-only All/Available/Required filter (item 3) can tell a helper's
+// offer from a beneficiary's request — same helper=offer/Available,
+// beneficiary=request/Required mapping Store.jsx uses (a regular item's
+// own `direction` column is only ever set for admin-direct/Store rows —
+// see server/routes/help.js POST / — so creator_role is what actually
+// works for every row, not just those).
 async function loadRealPeople(role) {
   let rows = [];
   try {
     const res = await api.get('/help/map');
-    rows = res.data.filter((r) => r.creator_role === role);
+    rows = role ? res.data.filter((r) => r.creator_role === role) : res.data;
   } catch (err) {
     return [];
   }
@@ -229,6 +237,7 @@ async function loadRealPeople(role) {
       const surname = nameParts.length ? nameParts[nameParts.length - 1] : '';
       byPerson.set(row.profile_id, {
         id: row.profile_id,
+        role: row.creator_role,
         nickname: row.person_nickname || '',
         fullName,
         surname,
@@ -295,7 +304,7 @@ async function loadRealPeople(role) {
 // logistics is a list of canonical values ('pickup'/'dropoff') — a person
 // matches if ANY of their open help items carries ANY of the selected
 // values, same "match if any item qualifies" behaviour as categories above.
-function matchesFilters(b, { categories, day, from, to, logistics }) {
+function matchesFilters(b, { categories, day, from, to, logistics, adminFilter }) {
   if (categories.length && !b.categories.some((c) => categories.includes(c))) return false;
   if (day) {
     const daySlots = b.slots.filter((s) => s.day === day);
@@ -308,6 +317,14 @@ function matchesFilters(b, { categories, day, from, to, logistics }) {
   if (logistics && logistics.length) {
     const anyMatch = (b.helps || []).some((h) => Array.isArray(h.logistics_preference) && h.logistics_preference.some((v) => logistics.includes(v)));
     if (!anyMatch) return false;
+  }
+  // Item 3 — admin's own All/Help Available/Help Required filter, same
+  // helper=offer/Available, beneficiary=request/Required mapping as
+  // Store.jsx (see loadRealPeople's own comment on why creator role, not
+  // `direction`, is what every row can actually be classified by).
+  if (adminFilter && adminFilter !== 'all') {
+    const wantRole = adminFilter === 'available' ? 'helper' : 'beneficiary';
+    if (b.role !== wantRole) return false;
   }
   return true;
 }
@@ -331,12 +348,16 @@ export default function MapView() {
   // looking: a helper sees beneficiaries who need help, a beneficiary sees
   // helpers who can help them. The underlying mock data is shared (it's all
   // dummy people either way) — only the label and profile link change.
-  const entityRole = isHelper ? 'beneficiary' : 'helper';
-  const entityLabel = isHelper ? 'Beneficiary' : 'Helper';
+  // Admin (item 3) sees both roles at once — no single "other role" to
+  // pin these to, so entityRole is null and every place that needs a
+  // specific person's role reads it off that person instead (see `role:`
+  // in loadRealPeople).
+  const entityRole = isAdmin ? null : (isHelper ? 'beneficiary' : 'helper');
+  const entityLabel = isAdmin ? 'Member' : (isHelper ? 'Beneficiary' : 'Helper');
   // Plural form for section headers listing multiple people at once (e.g. a
   // beneficiary viewing the map sees "Helpers", a helper sees
   // "Beneficiaries") — irregular plural, can't just append "s".
-  const entityLabelPlural = isHelper ? 'Beneficiaries' : 'Helpers';
+  const entityLabelPlural = isAdmin ? 'Members' : (isHelper ? 'Beneficiaries' : 'Helpers');
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const markerLayerRef = useRef(null);
@@ -400,6 +421,9 @@ export default function MapView() {
   const [filterLogistics, setFilterLogistics] = useState([]);
   const toggleFilterLogistics = (value) => setFilterLogistics((prev) =>
     (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
+  // Item 3 — admin-only All/Help Available/Help Required filter, same
+  // values and wording as Store.jsx's own dropdown.
+  const [adminFilter, setAdminFilter] = useState('all');
 
   const selectedBeneficiary = (beneficiaries || []).find((b) => b.id === selectedId) || null;
 
@@ -511,7 +535,7 @@ export default function MapView() {
     selectedMarkerElRef.current = null;
     setSelectedId(null);
 
-    const filters = { categories: filterCategories, day: filterDay, from: filterFrom, to: filterTo, logistics: filterLogistics };
+    const filters = { categories: filterCategories, day: filterDay, from: filterFrom, to: filterTo, logistics: filterLogistics, adminFilter };
     const matched = [];
     allBeneficiariesRef.current.forEach((b) => {
       if (!matchesFilters(b, filters)) return;
@@ -520,7 +544,7 @@ export default function MapView() {
     });
     setVisibleCount(matched.length);
     setVisibleList(matched);
-  }, [mapReady, filterCategories, filterDay, filterFrom, filterTo, filterLogistics, zoom]);
+  }, [mapReady, filterCategories, filterDay, filterFrom, filterTo, filterLogistics, adminFilter, zoom]);
 
   // "In this map view" list (below the Filter panel) — everyone matching the
   // filters whose marker currently sits inside the map's visible bounds.
@@ -530,12 +554,12 @@ export default function MapView() {
     const map = mapRef.current;
     if (!mapReady || !map || !allBeneficiariesRef.current) return;
     const bounds = map.getBounds();
-    const filters = { categories: filterCategories, day: filterDay, from: filterFrom, to: filterTo, logistics: filterLogistics };
+    const filters = { categories: filterCategories, day: filterDay, from: filterFrom, to: filterTo, logistics: filterLogistics, adminFilter };
     const inView = allBeneficiariesRef.current.filter(
       (b) => matchesFilters(b, filters) && bounds.contains([b.lat, b.lon])
     );
     setViewportList(inView);
-  }, [mapReady, filterCategories, filterDay, filterFrom, filterTo, filterLogistics, boundsTick, zoom]);
+  }, [mapReady, filterCategories, filterDay, filterFrom, filterTo, filterLogistics, adminFilter, boundsTick, zoom]);
 
   // Selecting a beneficiary from the List View sheet: highlight it the same
   // way clicking its marker would (so the map is already centred on them
@@ -559,7 +583,7 @@ export default function MapView() {
                 {(p.nickname || p.surname || '?').charAt(0).toUpperCase()}
               </div>
             )}
-            <button type="button" onClick={() => setProfilePopup({ id: p.id, role: entityRole })}
+            <button type="button" onClick={() => setProfilePopup({ id: p.id, role: p.role || entityRole })}
               className="text-sm font-semibold text-gray-800 truncate hover:underline text-left">
               {p.nickname || p.surname}
             </button>
@@ -649,7 +673,7 @@ export default function MapView() {
 
       const [resolvedAreas, realPeople] = await Promise.all([
         resolveOwnPreferredAreas(location.state, user?.role),
-        loadRealPeople(entityRole),
+        loadRealPeople(isAdmin ? null : entityRole),
       ]);
       if (cancelled) return;
       setRealCount(realPeople.length);
@@ -753,8 +777,22 @@ export default function MapView() {
     >
       <div className="max-w-6xl mx-auto">
         {/* text-lg — matching Store.jsx/NewHelp.jsx's section-title size
-            (was text-2xl, inconsistent with those two). */}
-        <h1 className="text-lg font-bold remar-green mb-4">{isHelper ? 'All Help Required' : 'All Help Available'}</h1>
+            (was text-2xl, inconsistent with those two). Admin (item 3) gets
+            a neutral title plus its own All/Help Available/Help Required
+            filter right here at the top, same dropdown as Store.jsx's own
+            admin filter — separate from the category/logistics/day filters
+            in the side panel below, which still apply on top of it. */}
+        <div className="flex items-center justify-between mb-4 gap-2">
+          <h1 className="text-lg font-bold remar-green">{isAdmin ? 'All Help Available or Required' : isHelper ? 'All Help Required' : 'All Help Available'}</h1>
+          {isAdmin && (
+            <select value={adminFilter} onChange={(e) => setAdminFilter(e.target.value)}
+              className="text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg px-2 py-2 focus:outline-none">
+              <option value="all">All</option>
+              <option value="available">Help Available</option>
+              <option value="required">Help Required</option>
+            </select>
+          )}
+        </div>
 
         <div className="flex flex-col lg:flex-row gap-4">
           {/* Map + dashboard */}
@@ -815,8 +853,8 @@ export default function MapView() {
 
             <p className="text-xs text-gray-400 mt-2 mb-4">
               {realCount > 0
-                ? `Showing ${visibleCount} of ${realCount} ${entityRole}s with an open help item near you.`
-                : `No ${entityRole}s with an open help item and a usable address yet.`}
+                ? `Showing ${visibleCount} of ${realCount} ${isAdmin ? 'people' : `${entityRole}s`} with an open help item near you.`
+                : `No ${isAdmin ? 'people' : `${entityRole}s`} with an open help item and a usable address yet.`}
             </p>
 
             {/* Dashboard — details for the selected marker (a beneficiary if
@@ -826,7 +864,7 @@ export default function MapView() {
               {selectedBeneficiary ? (
                 <div className="space-y-1.5">
                   <button type="button"
-                    onClick={() => setProfilePopup({ id: selectedBeneficiary.id, role: entityRole })}
+                    onClick={() => setProfilePopup({ id: selectedBeneficiary.id, role: selectedBeneficiary.role || entityRole })}
                     className="text-sm font-semibold text-remar underline hover:text-[#3d6a00] transition">
                     {selectedBeneficiary.nickname || selectedBeneficiary.surname}
                   </button>
@@ -893,19 +931,21 @@ export default function MapView() {
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs text-gray-500 mb-2 block">{LOGISTICS_FILTER_LABEL[isHelper ? 'helper' : 'beneficiary']}</label>
-                <div className="space-y-1.5">
-                  {(LOGISTICS_FILTER_OPTIONS[isHelper ? 'helper' : 'beneficiary']).map((opt) => (
-                    <label key={opt.value} className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-                      <input type="checkbox" checked={filterLogistics.includes(opt.value)}
-                        onChange={() => toggleFilterLogistics(opt.value)}
-                        className="rounded border-gray-300 text-remar focus:ring-remar" />
-                      <span>{opt.label}</span>
-                    </label>
-                  ))}
+              {!isAdmin && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-2 block">{LOGISTICS_FILTER_LABEL[isHelper ? 'helper' : 'beneficiary']}</label>
+                  <div className="space-y-1.5">
+                    {(LOGISTICS_FILTER_OPTIONS[isHelper ? 'helper' : 'beneficiary']).map((opt) => (
+                      <label key={opt.value} className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                        <input type="checkbox" checked={filterLogistics.includes(opt.value)}
+                          onChange={() => toggleFilterLogistics(opt.value)}
+                          className="rounded border-gray-300 text-remar focus:ring-remar" />
+                        <span>{opt.label}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Availability <span className="text-gray-400 font-normal">(optional)</span></label>
@@ -1024,7 +1064,14 @@ export default function MapView() {
                 )}
               </div>
               <div>
-                <p className="text-xs text-gray-400 mb-0.5">{entityLabel}</p>
+                {/* Admin's mixed helper+beneficiary list has no single
+                    entityLabel that fits every row — shows this person's
+                    own role instead (see loadRealPeople's `role:`). */}
+                <p className="text-xs text-gray-400 mb-0.5">
+                  {isAdmin && detailHelp.person.role
+                    ? detailHelp.person.role.charAt(0).toUpperCase() + detailHelp.person.role.slice(1)
+                    : entityLabel}
+                </p>
                 <p className="text-sm font-semibold text-gray-800">
                   {detailHelp.person.nickname || detailHelp.person.surname || '—'}
                 </p>
@@ -1034,7 +1081,7 @@ export default function MapView() {
                   ticking at least one is required before Request is enabled
                   (see item 9). Skipped entirely for help items with no
                   logistics_preference at all (services, Money, etc.). */}
-              {Array.isArray(detailHelp.help.logistics_preference) && detailHelp.help.logistics_preference.length > 0 && (
+              {!isAdmin && Array.isArray(detailHelp.help.logistics_preference) && detailHelp.help.logistics_preference.length > 0 && (
                 <div>
                   <p className="text-xs text-gray-400 mb-1.5">
                     {LOGISTICS_FILTER_LABEL[isHelper ? 'helper' : 'beneficiary']} — select the one(s) that work for you
