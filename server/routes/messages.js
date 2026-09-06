@@ -3,6 +3,7 @@ const { randomUUID } = require('crypto');
 const nodemailer = require('nodemailer');
 const db = require('../database/db');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { notifyUser } = require('../utils/notifier');
 const router = express.Router();
 
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'zubinsarkar@gmail.com';
@@ -333,6 +334,15 @@ router.post('/:id/reply', authenticate, async (req, res) => {
       [recipientId, req.user.id, senderName, msg.subject, body.trim(), msg.thread_id, msg.help_row_id]
     );
 
+    // Settings > App preferences > Notifications ('messages' event) —
+    // best-effort/non-blocking (see notifyUser), never affects the response.
+    if (recipientId) {
+      notifyUser(recipientId, 'messages', {
+        subject: `REMAR Schweiz: New message from ${senderName}`,
+        text: `${senderName} sent you a new message: "${body.trim()}"`,
+      });
+    }
+
     if (!recipientId && process.env.EMAIL_USER) {
       try {
         const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
@@ -436,6 +446,16 @@ router.post('/send', authenticate, async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
       [targetUserId, req.user.id, senderName, body.trim(), finalThreadId, finalHelpRowId]
     );
+
+    // Settings > App preferences > Notifications ('messages' event) —
+    // best-effort/non-blocking (see notifyUser), never affects the response.
+    if (targetUserId) {
+      notifyUser(targetUserId, 'messages', {
+        subject: `REMAR Schweiz: New message from ${senderName}`,
+        text: `${senderName} sent you a new message: "${body.trim()}"`,
+      });
+    }
+
     res.status(201).json(inserted.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });

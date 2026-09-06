@@ -53,4 +53,33 @@ async function sendWelcomeSms(to) {
   }
 }
 
-module.exports = { sendOtpSms, sendWelcomeSms };
+// Settings > App preferences > Notifications — WhatsApp channel (see
+// utils/notifier.js). Reuses the same Twilio account as SMS: no separate
+// integration needed, just a WhatsApp-enabled Twilio sender number
+// (TWILIO_WHATSAPP_NUMBER — for testing, Twilio's own sandbox number works)
+// and the `whatsapp:` prefix Twilio's API uses to route a message over
+// WhatsApp instead of plain SMS. Gracefully no-ops (like every other send
+// function here) if that number isn't configured, even if the base Twilio
+// credentials are.
+async function sendWhatsapp(to, body) {
+  if (!process.env.TWILIO_WHATSAPP_NUMBER) {
+    console.log('[WhatsApp] TWILIO_WHATSAPP_NUMBER not set — WhatsApp message not attempted');
+    return;
+  }
+  const client = getClient();
+  if (!client) {
+    console.log('[WhatsApp] TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_PHONE_NUMBER not set — WhatsApp message not attempted');
+    return;
+  }
+  try {
+    await client.messages.create({
+      to: `whatsapp:${to}`,
+      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
+      body,
+    });
+  } catch (err) {
+    console.error('WhatsApp send error:', err.message);
+  }
+}
+
+module.exports = { sendOtpSms, sendWelcomeSms, sendWhatsapp };

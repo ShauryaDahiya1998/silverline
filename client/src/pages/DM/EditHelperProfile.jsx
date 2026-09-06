@@ -7,6 +7,8 @@ import DateOfBirthPicker from '../../components/DateOfBirthPicker';
 import { showAppError } from '../../utils/errorBus';
 import { formatIsdCode } from '../../utils/phone';
 import { capWordsUnder100 } from '../../utils/text';
+import { pickPhoto } from '../../utils/pickPhoto';
+import { Geolocation } from '@capacitor/geolocation';
 
 // Same form as Helper Registration (HelperRegister.jsx) — kept field-for-field
 // identical on purpose so editing feels exactly like registering — minus the
@@ -186,6 +188,15 @@ export default function EditHelperProfile() {
   const [isRecording, setIsRecording] = useState(false);
   const [faceIdEnabled, setFaceIdEnabled] = useState(false);
   const [fingerprintEnabled, setFingerprintEnabled] = useState(false);
+  // What these two were when the page loaded (from the account's real
+  // enrolled credentials, see the GET /webauthn/status effect below) — Save
+  // only re-runs the Face ID / Fingerprint capture ceremony for one that
+  // actually just got switched ON here (off -> on), not for one that was
+  // already on and simply carried through unchanged; it removes the stored
+  // credential for one switched OFF (on -> off). Comparing against these
+  // refs is what tells the two apart.
+  const initialFaceIdEnabled = useRef(false);
+  const initialFingerprintEnabled = useRef(false);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
 
@@ -311,6 +322,18 @@ export default function EditHelperProfile() {
           setRegionMode('areas');
           setPreferredAreas([...(regions.areas || []), '', '', '', '', ''].slice(0, 5));
         }
+
+        // Reflect the account's real enrolled state so the toggles below
+        // aren't just permanently blank — and remember it in the refs above
+        // so Save can tell "already on, unchanged" apart from "just turned
+        // on" (see handleSubmit's own comment).
+        try {
+          const statusRes = await api.get('/webauthn/status');
+          setFaceIdEnabled(statusRes.data.faceIdEnabled);
+          setFingerprintEnabled(statusRes.data.fingerprintEnabled);
+          initialFaceIdEnabled.current = statusRes.data.faceIdEnabled;
+          initialFingerprintEnabled.current = statusRes.data.fingerprintEnabled;
+        } catch { /* leave both at their false default */ }
       } catch (err) {
         showAppError('Could not load your profile — please try again');
       } finally {
@@ -395,11 +418,12 @@ export default function EditHelperProfile() {
     return lines;
   };
 
-  const handlePhotoUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const dataUrl = await readFileAsDataURL(file);
-    setUploadedPhoto(dataUrl);
+  // Native "Take Photo / Choose from Library" action sheet (see
+  // utils/pickPhoto.js) instead of a plain file input — this is what
+  // registers the Camera and Photo Library permissions with the OS.
+  const handlePhotoUpload = async () => {
+    const dataUrl = await pickPhoto();
+    if (dataUrl) setUploadedPhoto(dataUrl);
   };
 
   const startRecording = async () => {
@@ -451,15 +475,16 @@ export default function EditHelperProfile() {
     dragItemIndex.current = null;
   };
 
-  const useCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      showAppError('Location services are not available in this browser');
-      return;
-    }
+  // @capacitor/geolocation instead of raw navigator.geolocation — this is
+  // what registers the Location permission with iOS/Android natively
+  // (falls back to the browser's own geolocation API automatically when
+  // this app is opened as a plain website).
+  const useCurrentLocation = async () => {
     setLocating(true);
-    navigator.geolocation.getCurrentPosition(async (pos) => {
+    try {
+      const pos = await Geolocation.getCurrentPosition();
+      const { latitude, longitude } = pos.coords;
       try {
-        const { latitude, longitude } = pos.coords;
         const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
         const data = await res.json();
         const a = data.address || {};
@@ -472,13 +497,12 @@ export default function EditHelperProfile() {
         }));
       } catch (err) {
         showAppError('Could not detect your address automatically — please enter it manually');
-      } finally {
-        setLocating(false);
       }
-    }, () => {
+    } catch (err) {
       showAppError('Location permission denied — please enter your address manually');
+    } finally {
       setLocating(false);
-    });
+    }
   };
 
   useEffect(() => {
@@ -528,14 +552,11 @@ export default function EditHelperProfile() {
     setShowRegionSuggestions(false);
   };
 
-  const useCurrentLocationForRegion = () => {
-    if (!navigator.geolocation) {
-      showAppError('Location services are not available in this browser');
-      return;
-    }
+  const useCurrentLocationForRegion = async () => {
     if (regionMode === 'areas') clearAreasMethod();
     setLocatingRegion(true);
-    navigator.geolocation.getCurrentPosition(async (pos) => {
+    try {
+      const pos = await Geolocation.getCurrentPosition();
       const { latitude, longitude } = pos.coords;
       let label = 'Current location';
       try {
@@ -550,11 +571,11 @@ export default function EditHelperProfile() {
       setRegionCenterQuery(label);
       setRegionCenter({ lat: latitude, lon: longitude, label });
       setRegionMode('distance');
-      setLocatingRegion(false);
-    }, () => {
+    } catch (err) {
       showAppError('Location permission denied');
+    } finally {
       setLocatingRegion(false);
-    });
+    }
   };
 
   const updatePreferredArea = (value) => {
@@ -614,14 +635,11 @@ export default function EditHelperProfile() {
 
   // Same pattern as useCurrentLocationForRegion below, but fills whichever
   // area tab is currently active and runs the duplicate check above.
-  const useCurrentLocationForArea = () => {
-    if (!navigator.geolocation) {
-      showAppError('Location services are not available in this browser');
-      return;
-    }
+  const useCurrentLocationForArea = async () => {
     if (regionMode === 'distance') clearDistanceMethod();
     setLocatingArea(true);
-    navigator.geolocation.getCurrentPosition(async (pos) => {
+    try {
+      const pos = await Geolocation.getCurrentPosition();
       const { latitude, longitude } = pos.coords;
       let label = 'Current location';
       try {
@@ -631,7 +649,6 @@ export default function EditHelperProfile() {
       } catch (err) {
         // fall back to the generic label if reverse geocoding fails
       }
-      setLocatingArea(false);
       setAreaSuggestions([]);
       setShowAreaSuggestions(false);
       if (isDuplicateArea(label, activeAreaTab)) {
@@ -643,10 +660,11 @@ export default function EditHelperProfile() {
       lastAreaSelectionRef.current = label;
       setPreferredAreas(prev => prev.map((a, i) => i === activeAreaTab ? label : a));
       setRegionMode('areas');
-    }, () => {
+    } catch (err) {
       showAppError('Location permission denied');
+    } finally {
       setLocatingArea(false);
-    });
+    }
   };
 
   const removeArea = (i) => {
@@ -731,18 +749,32 @@ export default function EditHelperProfile() {
         professional_experience: profile.professionalExperience
       });
 
-      // Best-effort — enroll this device for Face ID / Fingerprint if newly
-      // toggled on. Never blocks saving: an unsupported browser, a cancelled
-      // OS prompt, or any other failure here is silently skipped.
-      if (faceIdEnabled || fingerprintEnabled) {
+      // Face ID / Fingerprint just switched ON here captures (and saves) a
+      // fresh credential — every time it's freshly enabled, not just once
+      // ever, per the toggle's own real biometric each time. Never blocks
+      // the rest of Save: an unsupported browser, a cancelled OS prompt, or
+      // any other failure here just leaves it un-enrolled, surfaced as a
+      // popup rather than swallowed silently.
+      const justEnabledFaceId = faceIdEnabled && !initialFaceIdEnabled.current;
+      const justEnabledFingerprint = fingerprintEnabled && !initialFingerprintEnabled.current;
+      if (justEnabledFaceId || justEnabledFingerprint) {
         try {
           const optionsRes = await api.post('/webauthn/register/options', {}, { headers: { Authorization: `Bearer ${token}` } });
           const credential = await registerCredential(optionsRes.data);
-          const deviceLabel = [faceIdEnabled && 'face', fingerprintEnabled && 'fingerprint'].filter(Boolean).join('+');
+          const deviceLabel = [justEnabledFaceId && 'face', justEnabledFingerprint && 'fingerprint'].filter(Boolean).join('+');
           await api.post('/webauthn/register/verify', { ...credential, deviceLabel }, { headers: { Authorization: `Bearer ${token}` } });
         } catch (err) {
-          // Non-blocking — can still enable this later.
+          showAppError(err.response?.data?.error || err.message || 'Could not capture Face ID / Fingerprint — your other profile changes were still saved.');
         }
+      }
+      // Switched OFF here removes the account's stored credential(s) of that
+      // kind (see webauthn.js's DELETE /credentials/:type) so a disabled
+      // toggle actually stops working for login, not just visually.
+      if (!faceIdEnabled && initialFaceIdEnabled.current) {
+        try { await api.delete('/webauthn/credentials/face', { headers: { Authorization: `Bearer ${token}` } }); } catch { /* best-effort */ }
+      }
+      if (!fingerprintEnabled && initialFingerprintEnabled.current) {
+        try { await api.delete('/webauthn/credentials/fingerprint', { headers: { Authorization: `Bearer ${token}` } }); } catch { /* best-effort */ }
       }
 
       navigate('/helper/profile/me');
@@ -760,7 +792,7 @@ export default function EditHelperProfile() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
+    <div className="min-h-screen bg-gray-50 py-10 px-4 pb-28">
       <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-lg p-8">
         <h1 className="text-2xl font-bold remar-green mb-1">Edit Profile</h1>
         <p className="text-gray-500 mb-6 text-sm">Update your REMAR helper profile</p>
@@ -835,7 +867,8 @@ export default function EditHelperProfile() {
                       ›
                     </button>
                   </div>
-                  <label className="w-full aspect-square bg-gray-100 flex flex-col items-center justify-center overflow-hidden p-2 cursor-pointer">
+                  <button type="button" onClick={handlePhotoUpload}
+                    className="w-full aspect-square bg-gray-100 flex flex-col items-center justify-center overflow-hidden p-2 cursor-pointer">
                     {uploadedPhoto ? (
                       <img src={uploadedPhoto} alt="Uploaded" className="w-full h-full object-cover" />
                     ) : (
@@ -844,8 +877,7 @@ export default function EditHelperProfile() {
                         <span className="text-[10px] remar-green font-semibold mt-1 px-1 text-center">Upload photo</span>
                       </>
                     )}
-                    <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
-                  </label>
+                  </button>
                 </div>
                 <p className="text-[9px] text-gray-400 mt-2 text-center whitespace-nowrap">If no photo is selected or uploaded, system will select one</p>
               </div>

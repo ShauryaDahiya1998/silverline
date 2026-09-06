@@ -1,10 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
+import { GoogleSignIn } from '@capawesome/capacitor-google-sign-in';
+import { FacebookSignIn } from '@capawesome/capacitor-facebook-sign-in';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api';
 import Logo from '../../components/Logo';
 import { isWebAuthnSupported, getAssertion } from '../../utils/webauthn';
 import { showAppError } from '../../utils/errorBus';
+
+const isNative = Capacitor.isNativePlatform();
 
 export default function Login() {
 const [form, setForm] = useState({ email: '', phone: '', password: '' });
@@ -39,10 +44,16 @@ showAppError(err.response?.data?.error || 'Login failed');
 }
 };
 
-// Google Identity Services — renders Google's own button (required by their
-// terms; a look-alike button can't call their sign-in flow) into the ref'd
-// container once the CDN script (loaded in index.html) is ready.
+// Google Identity Services (the web JS SDK below) relies on a popup/iframe
+// OAuth flow that Google actively blocks inside embedded WebViews — exactly
+// what every Capacitor app is — returning "disallowed_useragent" instead of
+// ever completing sign-in. That's why the button silently did nothing in
+// the actual app despite working fine in a real desktop/mobile browser.
+// Native platforms get their own real Google Sign-In SDK below instead (see
+// handleGoogleLoginNative + the initNativeAuth effect), so this whole GSI
+// setup is web-only from here on.
 useEffect(() => {
+if (isNative) return;
 const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 if (!clientId) return; // not configured yet — leave the slot empty rather than erroring
 
@@ -98,6 +109,43 @@ return () => { cancelled = true; };
 // eslint-disable-next-line react-hooks/exhaustive-deps
 }, []);
 
+// Native Google Sign-In (@capawesome/capacitor-google-sign-in) + native
+// Facebook Sign-In (@capawesome/capacitor-facebook-sign-in) — the real SDKs
+// on iOS/Android instead of the web flows above, which either get silently
+// blocked (Google) or rely on a popup+postMessage callback that the app's
+// WebView never receives (Facebook — see handleFacebookLogin's own comment).
+// Both must be initialize()'d once before signIn() can be called; harmless
+// to skip entirely on web, where the JS-SDK-based flows further down handle
+// things instead.
+const nativeAuthInitialized = useRef(false);
+useEffect(() => {
+if (!isNative || nativeAuthInitialized.current) return;
+nativeAuthInitialized.current = true;
+const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+if (googleClientId) {
+GoogleSignIn.initialize({ clientId: googleClientId }).catch(() => {});
+}
+// appId/clientToken are read from the native Info.plist/AndroidManifest
+// config on iOS/Android (see the setup guide) — nothing to pass here.
+FacebookSignIn.initialize().catch(() => {});
+}, []);
+
+const handleGoogleLoginNative = async () => {
+showAppError('');
+try {
+const result = await GoogleSignIn.signIn();
+const res = await api.post('/auth/google', { credential: result.idToken });
+login(res.data.user, res.data.token);
+goToRoleHome(res.data.user.role);
+} catch (err) {
+if (err?.code === 'SIGN_IN_CANCELED' || err?.message?.toLowerCase().includes('cancel')) {
+showAppError('Google sign-in was cancelled');
+} else {
+showAppError(err.response?.data?.error || err.message || 'Google sign-in failed');
+}
+}
+};
+
 // Facebook JS SDK — loaded lazily on first click rather than up front, since
 // (unlike Google) Facebook doesn't require rendering their own button, so
 // there's no need to have the SDK ready before the person interacts.
@@ -119,7 +167,31 @@ document.body.appendChild(script);
 }
 });
 
+// The web JS SDK's FB.login() opens a popup and waits for a postMessage
+// back from it — inside a Capacitor WebView there's no real popup (or it
+// opens external Safari/Chrome and never hands control back), so the
+// person could complete Facebook's own consent screen and the app would
+// still just sit there. That's the "works but doesn't log in" symptom.
+// Native platforms use the real Facebook SDK below instead, which returns
+// the access token directly, no popup involved.
+const handleFacebookLoginNative = async () => {
+showAppError('');
+try {
+const result = await FacebookSignIn.signIn();
+if (!result.accessToken?.token) {
+showAppError('Facebook sign-in was cancelled');
+return;
+}
+const res = await api.post('/auth/facebook', { accessToken: result.accessToken.token });
+login(res.data.user, res.data.token);
+goToRoleHome(res.data.user.role);
+} catch (err) {
+showAppError(err.response?.data?.error || err.message || 'Facebook sign-in failed');
+}
+};
+
 const handleFacebookLogin = async () => {
+if (isNative) return handleFacebookLoginNative();
 showAppError('');
 try {
 const FB = await ensureFacebookSdk();
@@ -139,39 +211,42 @@ showAppError(err.message || 'Facebook sign-in is not available');
 
 // Face ID and Fingerprint are both just the platform's biometric prompt via
 // WebAuthn — there's no separate "Face ID API" vs "Fingerprint API" on the
-// web, the OS picks whichever biometric it has. Needs an email/phone typed
-// in first so the server knows which account's registered credential(s) to
-// challenge, and only works for a device that was previously enrolled
-// (from the registration page, or later from a profile settings page).
+// web, the OS picks whichever biometric it has. No email/phone needed: the
+// server issues a passwordless challenge with no account attached yet (see
+// POST /webauthn/login/options with no identifier), the platform prompts
+// for any resident/discoverable credential it holds for this RP (see
+// registerCredential's residentKey: 'required'), and the account itself is
+// resolved from the credential's own userHandle in POST /webauthn/login/
+// verify — only works for a device that was previously enrolled (from the
+// registration page, or later from a profile settings page).
 const handleBiometricLogin = async () => {
 showAppError('');
-const identifier = form.email.trim() || form.phone.trim();
-if (!identifier) {
-showAppError('Enter your email address or phone number first, then use Face ID / Fingerprint');
-return;
-}
 if (!isWebAuthnSupported()) {
 showAppError('Face ID / Fingerprint sign-in is not supported on this browser or device');
 return;
 }
 try {
-const optionsRes = await api.post('/webauthn/login/options', { identifier });
-const { userId, ...credentialOptions } = optionsRes.data;
-const assertion = await getAssertion(credentialOptions);
-const verifyRes = await api.post('/webauthn/login/verify', { userId, ...assertion });
+const optionsRes = await api.post('/webauthn/login/options', {});
+const assertion = await getAssertion(optionsRes.data);
+const verifyRes = await api.post('/webauthn/login/verify', assertion);
 login(verifyRes.data.user, verifyRes.data.token);
 goToRoleHome(verifyRes.data.user.role);
 } catch (err) {
 if (err?.name === 'NotAllowedError') {
 showAppError('Face ID / Fingerprint sign-in was cancelled');
 } else {
-showAppError(err.response?.data?.error || err.message || 'Face ID / Fingerprint sign-in failed');
+showAppError(err.response?.data?.error || err.message || 'Face ID / Fingerprint sign-in failed — sign in with your password first, then enable it from your profile.');
 }
 }
 };
 
+// fixed + overflow-hidden (not min-h-screen) so this page can never be
+// scrolled or panned — including the browser's own "scroll focused input
+// into view" behavior when the keyboard opens, which otherwise shifted
+// this page up/down since it isn't part of any scrollable ancestor once
+// positioned this way.
 return (
-<div className="min-h-screen flex" style={{ background: '#f5f9f0' }}>
+<div className="fixed inset-0 flex overflow-hidden" style={{ background: '#f5f9f0' }}>
 {/* Left panel */}
 <div className="hidden md:flex md:w-1/2 flex-col justify-center items-center px-12"
 style={{ background: '#f7f9f4' }}>
@@ -276,7 +351,16 @@ Sign In
     Falls back to a disabled placeholder if VITE_GOOGLE_CLIENT_ID isn't
     configured yet. */}
 {import.meta.env.VITE_GOOGLE_CLIENT_ID ? (
-googleButtonBroken ? (
+isNative ? (
+// Native platforms use the real Google Sign-In SDK (see
+// handleGoogleLoginNative) — Google's own embeddable web button
+// above never works inside a Capacitor WebView, so this is a
+// plain styled button rather than Google's rendered iframe.
+<button type="button" title="Google" aria-label="Continue with Google" onClick={handleGoogleLoginNative}
+className="w-11 h-11 flex items-center justify-center border border-gray-300 rounded-full hover:bg-gray-50 transition">
+<img src="https://developers.google.com/identity/images/g-logo.png" alt="" className="w-5 h-5" />
+</button>
+) : googleButtonBroken ? (
 <button type="button" title="Google" aria-label="Continue with Google"
 onClick={() => window.google?.accounts?.id?.prompt()}
 className="w-11 h-11 flex items-center justify-center border border-gray-300 rounded-full hover:bg-gray-50 transition">

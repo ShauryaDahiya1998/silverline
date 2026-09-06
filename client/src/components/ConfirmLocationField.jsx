@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api';
+import { Geolocation } from '@capacitor/geolocation';
 
 // Shown on New Help for any physical item (see helpTaxonomy.js's
 // getItemDelivery) — lets the creator say who this specific Help ID's
@@ -110,14 +111,17 @@ export default function ConfirmLocationField({ value, onChange, fetchRegistered 
     });
   };
 
-  const useCurrentLocation = () => {
+  // @capacitor/geolocation instead of the raw navigator.geolocation API —
+  // this is what actually registers the Location permission with iOS/
+  // Android natively (and is what makes the Location row appear on the
+  // app's native Settings page). It falls back to the browser's own
+  // geolocation API transparently when this app is opened as a plain
+  // website (not through Capacitor), so nothing changes there.
+  const useCurrentLocation = async () => {
     setError('');
-    if (!navigator.geolocation) {
-      setError('Your browser does not support location access.');
-      return;
-    }
     setLocating(true);
-    navigator.geolocation.getCurrentPosition(async (pos) => {
+    try {
+      const pos = await Geolocation.getCurrentPosition();
       const { latitude, longitude } = pos.coords;
       try {
         const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
@@ -134,13 +138,12 @@ export default function ConfirmLocationField({ value, onChange, fetchRegistered 
         onChange(next);
       } catch {
         onChange({ street: '', house_number: '', city: '', pincode: '', latitude, longitude });
-      } finally {
-        setLocating(false);
       }
-    }, () => {
+    } catch {
+      setError('Could not access your current location — check your device permissions.');
+    } finally {
       setLocating(false);
-      setError('Could not access your current location — check your browser permissions.');
-    });
+    }
   };
 
   const btnClass = (active) => `flex-1 text-xs font-semibold rounded-lg py-2 border transition ${

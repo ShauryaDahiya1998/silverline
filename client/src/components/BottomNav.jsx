@@ -165,14 +165,35 @@ export default function BottomNav() {
     // no such effect — filter never changes an element's own positioning,
     // only its descendants' — so this keeps the tinted look without
     // breaking the fixed position.
-    <nav style={{ filter: colorFilter }} className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-2px_8px_rgba(0,0,0,0.04)] z-40">
-      <div className={`max-w-lg mx-auto grid ${isAdmin ? 'grid-cols-7' : 'grid-cols-6'}`}>
-        {items.map(item => (
+    <nav
+      style={{ filter: colorFilter, paddingBottom: 'max(0px, calc(env(safe-area-inset-bottom, 0px) - 2mm))' }}
+      className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-2px_8px_rgba(0,0,0,0.04)] z-40"
+    >
+      {/* paddingBottom above clears the home-indicator safe area only — it
+          used to add a flat +5mm on top of that for corner clearance, but
+          on the actual phone (where the safe-area inset already does most
+          of that clearing) the extra +5mm sat on top of it and pushed the
+          whole icon row 7mm higher than intended. Subtracting 2mm (net
+          -7mm vs. the old +5mm) brings the row back down while max(0px, …)
+          keeps it from going negative on devices with little/no safe area
+          inset. The bar's white background still runs all the way to the
+          true bottom edge (bottom-0 unchanged), only the padding shrank. */}
+      {/* Every button is an equal-width grid column with the same gap-2
+          between each one, so they're all equidistant from their neighbors
+          — previously the first/last items were nudged inward with their
+          own translateX (2mm/5mm) for corner clearance, but shifting just
+          those two individually pulled them closer to their neighbor than
+          the other gaps, breaking the equal spacing. Corner clearance is
+          now done once, symmetrically, as padding on this container instead
+          — it insets the whole row evenly from both edges without touching
+          the spacing between buttons at all. */}
+      <div className={`max-w-lg mx-auto grid gap-2 px-[3mm] ${isAdmin ? 'grid-cols-7' : 'grid-cols-6'}`}>
+        {items.map((item) => (
           <button
             key={item.key}
             type="button"
             onClick={() => handleClick(item)}
-            className={`flex flex-col items-center justify-center gap-0.5 py-2.5 mx-1 my-1.5 rounded-xl transition ${isActive(item) ? 'bg-green-50' : ''}`}
+            className={`flex flex-col items-center justify-center gap-0.5 py-2.5 my-1.5 rounded-xl transition ${isActive(item) ? 'bg-green-50' : ''}`}
             style={{ color: isActive(item) ? '#3a6b00' : '#9ca3af' }}
           >
             {ICONS[item.icon]}

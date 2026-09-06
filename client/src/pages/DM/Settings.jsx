@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { usePreferences } from '../../context/PreferencesContext';
 import { useNavigate } from 'react-router-dom';
 import ConfirmModal from '../../components/ConfirmModal';
+import TermsModal from '../../components/TermsModal';
 
 // Reusable chevron for every navigable row below.
 const Chevron = () => (
@@ -55,13 +56,12 @@ const Section = ({ title, children }) => (
   </div>
 );
 
-const FEEDBACK_MAILTO = 'mailto:zubinsarkar@gmail.com?subject=REMAR%20Schweiz%20App%20Feedback';
-
 export default function Settings() {
   const { user, logout } = useAuth();
   const { t, currency, language, fontSize, colorTheme, updatePreferences } = usePreferences();
   const navigate = useNavigate();
   const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
 
   const handleLogout = () => {
     setConfirmingLogout(false);
@@ -92,7 +92,15 @@ export default function Settings() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4 pb-28">
+    // Same negative-margin/padding-top swap used on the Home pages —
+    // cancels out body's own safe-area-inset-top padding (which otherwise
+    // left a white strip above this page's grey background) and re-adds it
+    // as this div's own padding-top, on top of the original py-10 top
+    // spacing (now pt-10, split out from py-10 so pb-10 stays unaffected).
+    <div
+      className="min-h-screen bg-gray-50 px-4 pb-28"
+      style={{ marginTop: 'calc(-1 * (env(safe-area-inset-top, 0px) + 2mm))', paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2mm + 2.5rem)' }}
+    >
       <div className="max-w-lg mx-auto">
         <div className="space-y-5">
           {/* Admin logins are shared org accounts with no profile of their
@@ -114,8 +122,14 @@ export default function Settings() {
                 Reaching the same page from Admin Home > Services stays
                 view/toggle-only. */}
             {isAdmin && <Row label={t('settings.autoApproval')} onClick={() => navigate('/admin/auto-match', { state: { manage: true } })} />}
+            {/* Every bank account shown as a tab on Donate > Bank transfer —
+                see routes/bankAccounts.js and AdminBankDetails.jsx. */}
+            {isAdmin && <Row label={t('settings.bankDetails')} onClick={() => navigate('/admin/bank-details')} />}
             <Row label={t('settings.changePassword')} onClick={() => navigate('/change-password')} />
             <Row label={t('settings.chats')} onClick={() => navigate('/messages')} />
+            {/* Every app feedback submission (Settings > Support > Give App
+                Feedback) — see routes/feedback.js and AdminFeedback.jsx. */}
+            {isAdmin && <Row label={t('settings.feedback')} onClick={() => navigate('/admin/feedback')} />}
             {/* Orange rather than the red used for Delete account below —
                 logging out is reversible (just sign back in), so it
                 shouldn't read as equally destructive. */}
@@ -123,13 +137,18 @@ export default function Settings() {
             {!isAdmin && <Row label={t('settings.deleteAccount')} onClick={() => navigate('/delete-account')} danger />}
           </Section>
 
-          {/* Only Language/Currency/Font size/Color are real settings today
-              (persisted per-account — see PreferencesContext.jsx and
-              server/routes/preferences.js). Notifications/Device stay as
-              "coming soon" placeholder rows (no onClick) until built out. */}
+          {/* Language/Currency/Font size/Color are real settings persisted
+              per-account (PreferencesContext.jsx / server/routes/
+              preferences.js). Notifications/Device now open in-app pages
+              (NotificationPreferences.jsx / DeviceSettings.jsx) rather than
+              deep-linking to the OS Settings app — Device surfaces live
+              Location/Camera/Notifications permission status with Enable
+              buttons plus a Vibration toggle and Face ID/Fingerprint status,
+              and Notifications lets each event type choose Email/SMS/
+              WhatsApp instead of just the OS's on/off push toggle. */}
           <Section title={t('settings.appPreferences')}>
-            <Row label={t('settings.notifications')} />
-            <Row label={t('settings.device')} />
+            <Row label={t('settings.notifications')} onClick={() => navigate('/settings/notifications')} />
+            <Row label={t('settings.device')} onClick={() => navigate('/settings/device')} />
             <SelectRow label={t('settings.language')} value={language} onChange={(v) => updatePreferences({ language: v })} options={LANGUAGE_OPTIONS} />
             <SelectRow label={t('settings.currency')} value={currency} onChange={(v) => updatePreferences({ currency: v })} options={CURRENCY_OPTIONS} />
             <SelectRow label={t('settings.fontSize')} value={String(fontSize)} onChange={(v) => updatePreferences({ font_size: Number(v) })} options={FONT_SIZE_OPTIONS} />
@@ -138,18 +157,19 @@ export default function Settings() {
 
           {!isAdmin && (
             <Section title={t('settings.support')}>
+              <Row label={t('settings.faq')} />
               <Row label={t('settings.bot')} onClick={() => navigate('/support/chatbot')} />
               <Row label={t('settings.contactUs')} onClick={() => navigate('/support/contact')} />
               <Row label={t('settings.supportChats')} onClick={() => navigate('/support/chats')} />
               <Row label={t('settings.tickets')} onClick={() => navigate('/support/tickets')} />
-              <Row label={t('settings.faq')} />
-              <Row label={t('settings.giveFeedback')} onClick={() => { window.location.href = FEEDBACK_MAILTO; }} />
+              <Row label={t('settings.giveFeedback')} onClick={() => navigate('/support/feedback')} />
             </Section>
           )}
 
           <Section title={t('settings.legal')}>
-            <Row label={t('settings.terms')} />
-            <Row label={t('settings.privacy')} />
+            <Row label={t('settings.about')} onClick={() => navigate('/settings/about')} />
+            <Row label={t('settings.terms')} onClick={() => setShowTerms(true)} />
+            <Row label={t('settings.privacy')} onClick={() => navigate('/settings/privacy')} />
           </Section>
         </div>
       </div>
@@ -164,6 +184,8 @@ export default function Settings() {
         onConfirm={handleLogout}
         onCancel={() => setConfirmingLogout(false)}
       />
+
+      {showTerms && <TermsModal onClose={() => setShowTerms(false)} />}
     </div>
   );
 }

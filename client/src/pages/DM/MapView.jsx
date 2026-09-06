@@ -237,7 +237,19 @@ async function loadRealPeople(role) {
         lon: row.longitude != null ? parseFloat(row.longitude) : null,
         address: row.address,
         categories: new Set(),
-        slots: [],
+        // Flattened from availability_json (see GET /help/map's
+        // COALESCE(v.availability, b.time_preferences)) — that's shaped as
+        // one array per weekday of up to 3 {from,to} slots (see
+        // HelperRegister.jsx/BeneficiaryRegister.jsx's emptyAvailability);
+        // matchesFilters just wants a flat list with each slot's own day
+        // attached, and skips slots the person never filled in (blank
+        // from/to). Was hardcoded to [] before — the Day/Time filter had no
+        // real data to match against until now.
+        slots: Object.entries(row.availability_json || {}).flatMap(([day, daySlots]) =>
+          (Array.isArray(daySlots) ? daySlots : [])
+            .filter((s) => s?.from && s?.to)
+            .map((s) => ({ day, from: s.from, to: s.to }))
+        ),
         helps: [],
       });
     }
@@ -730,11 +742,19 @@ export default function MapView() {
   }, []);
 
   return (
-    // mt-[5mm] shifts the title + everything below it down slightly to clear
-    // a device camera cutout, on top of the usual py-6 top padding.
-    <div className="min-h-screen bg-gray-50 py-6 px-4 pb-28 mt-[5mm]">
+    // Same negative-margin/padding-top swap as the other DM pages — cancels
+    // body's own safe-area-inset-top padding (a white strip above this grey
+    // page otherwise), re-added here as just 3mm total so the title sits
+    // close under the camera/notch area (superseding the old mt-[5mm]
+    // camera-cutout allowance and the extra 1.5rem py-6 top spacing).
+    <div
+      className="min-h-screen bg-gray-50 px-4 pb-28"
+      style={{ marginTop: 'calc(-1 * (env(safe-area-inset-top, 0px) + 2mm))', paddingTop: 'calc(env(safe-area-inset-top, 0px) + 3mm)' }}
+    >
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-2xl font-bold remar-green mb-4">{isHelper ? 'All Help Required' : 'All Help Available'}</h1>
+        {/* text-lg — matching Store.jsx/NewHelp.jsx's section-title size
+            (was text-2xl, inconsistent with those two). */}
+        <h1 className="text-lg font-bold remar-green mb-4">{isHelper ? 'All Help Required' : 'All Help Available'}</h1>
 
         <div className="flex flex-col lg:flex-row gap-4">
           {/* Map + dashboard */}

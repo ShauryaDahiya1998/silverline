@@ -44,6 +44,9 @@ app.use('/api/auto-match-rules', require('./routes/autoMatch'));
 app.use('/api/donations', require('./routes/donations'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/preferences', require('./routes/preferences'));
+app.use('/api/push-tokens', require('./routes/pushTokens'));
+app.use('/api/feedback', require('./routes/feedback'));
+app.use('/api/bank-accounts', require('./routes/bankAccounts'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 

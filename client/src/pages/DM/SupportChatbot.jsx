@@ -2,11 +2,10 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api';
 
-// In-app Bot — reachable from the Support hub (Support.jsx) and Settings >
-// Support > Bot. Answers common questions with simple keyword matching (no
-// external AI service wired up); anything it can't answer routes the person
-// to Contact us. Named just "Bot" (not "Help Bot") since "Help" already
-// means something specific elsewhere in the app (a help request).
+// In-app Help bot — reachable from the Support hub (Support.jsx) and
+// Settings > Support > Help bot. Answers common questions with simple
+// keyword matching (no external AI service wired up); anything it can't
+// answer routes the person to Contact us.
 // The full transcript is saved as one Chats entry (support_chats) when the
 // person navigates away, as long as they actually said something.
 
@@ -31,8 +30,26 @@ const getBotReply = (text) => {
 
 const SUGGESTIONS = ['How do I request help?', 'How do I reset my password?', 'How do I edit my profile?', 'Talk to a human'];
 
+// crypto.randomUUID() only exists in secure contexts (HTTPS, or Capacitor's
+// own local scheme) — on a plain-http origin (e.g. local dev testing over a
+// LAN IP) it's undefined, and calling it threw uncaught here, which is what
+// produced the blank screen: React has no error boundary around this page,
+// so an error thrown during the initial render (in the useRef initializer
+// below) unmounts the whole tree instead of just this component. This
+// fallback keeps the page working regardless of secure-context support.
+const makeSessionId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 const INITIAL_MESSAGES = [
-  { from: 'bot', text: "Hi! I'm the REMAR Bot. Ask me about requesting help, your profile, donations, or anything else — or tap “Contact us” any time to reach a real person." },
+  { from: 'bot', text: "Hi! I'm the REMAR Help bot. Ask me about requesting help, your profile, donations, or anything else — or tap “Contact us” any time to reach a real person." },
 ];
 
 export default function SupportChatbot() {
@@ -41,7 +58,7 @@ export default function SupportChatbot() {
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
   const scrollRef = useRef(null);
-  const sessionIdRef = useRef(crypto.randomUUID());
+  const sessionIdRef = useRef(makeSessionId());
   const messagesRef = useRef(messages);
 
   useEffect(() => {

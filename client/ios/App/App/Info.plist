@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CAPACITOR_DEBUG</key>
+	<string>$(CAPACITOR_DEBUG)</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+        <string>Remar</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<!-- =====================================================================
+	     DEV-ONLY — LOCAL NETWORK DEBUGGING (task: local dev loop)
+	     Lets the app load plain-http content from your Mac's LAN IP, used
+	     together with capacitor.config.json's "server" block (see
+	     capacitor.config.production.json for the real, App-Store-safe
+	     config with no such block). DELETE this entire NSAppTransportSecurity
+	     key before building anything for TestFlight/App Store — Apple
+	     rejects submissions containing NSAllowsArbitraryLoads.
+	     ===================================================================== -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<!-- ===================================================================== -->
+	<!-- Usage-description strings iOS requires before it will show the
+	     corresponding permission prompt (and, once granted/denied once, the
+	     corresponding toggle on this app's own Settings page) — see
+	     utils/pickPhoto.js (Camera), ConfirmLocationField.jsx and the
+	     Register/Edit Profile "use my current location" buttons
+	     (Geolocation), and utils/pushNotifications.js (registered for push
+	     below via UIBackgroundModes). Without these keys, calling the
+	     corresponding Capacitor plugin doesn't just fail — iOS kills the app
+	     outright the moment the permission is requested. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Remar uses your camera so you can attach a photo when creating or editing a Help item.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Remar accesses your photo library so you can attach an existing photo when creating or editing a Help item, or as your profile picture.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Remar uses your location so you can fill in an address automatically instead of typing it, and to show it on the Help map.</string>
+	<!-- remote-notification lets iOS deliver silent/background pushes and is
+	     also what makes "Background App Refresh" appear as a real toggle on
+	     this app's Settings page — see utils/pushNotifications.js. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+	<!-- Native Google Sign-In (@capawesome/capacitor-google-sign-in) — see
+	     client/.env's VITE_GOOGLE_CLIENT_ID for the matching web client ID
+	     used everywhere else; GIDClientID here must be the separate iOS-type
+	     OAuth client ID from the same Google Cloud project (Credentials >
+	     Create Credentials > OAuth client ID > iOS). Replace both this and
+	     the reversed-client-ID URL scheme below with your real values —
+	     the placeholders below won't work as-is. -->
+	<key>GIDClientID</key>
+	<string>865929415653-1ulne75u4jpcelhbps30gi8l5iu8m0ud.apps.googleusercontent.com</string>
+	<!-- Native Facebook Sign-In (@capawesome/capacitor-facebook-sign-in) —
+	     from the Meta App Dashboard's app settings (Settings > Basic).
+	     Replace all three placeholders below with your real values. -->
+	<key>FacebookAppID</key>
+	<string>28512672458325077</string>
+	<key>FacebookClientToken</key>
+	<string>022c45101b9d0e6e19470cb311ea9796</string>
+	<key>FacebookDisplayName</key>
+	<string>Remar</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>fbapi</string>
+		<string>fb-messenger-share-api</string>
+	</array>
+	<!-- One URL scheme per sign-in provider — Google's reversed iOS client
+	     ID (e.g. com.googleusercontent.apps.123456789-abc) and Facebook's
+	     App ID prefixed with "fb" (e.g. fb1234567890123456). Both need the
+	     real values above swapped in, not just this array. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.865929415653-1ulne75u4jpcelhbps30gi8l5iu8m0ud</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>fb28512672458325077</string>
+			</array>
+		</dict>
+	</array>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+    <false/>
+    <key>UISceneConfigurations</key>
+    <dict>
+      <key>UIWindowSceneSessionRoleApplication</key>
+      <array>
+        <dict>
+            <key>UISceneConfigurationName</key>
+            <string>Default Configuration</string>
+            <key>UISceneDelegateClassName</key>
+            <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+            <key>UISceneStoryboardFile</key>
+            <string>Main</string>
+        </dict>
+      </array>
+    </dict>
+	</dict>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>armv7</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<true/>
+</dict>
+</plist>

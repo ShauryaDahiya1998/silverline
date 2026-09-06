@@ -8,6 +8,8 @@ import TermsModal from '../../components/TermsModal';
 import PasswordInput from '../../components/PasswordInput';
 import { showAppError } from '../../utils/errorBus';
 import { formatIsdCode } from '../../utils/phone';
+import { pickPhoto } from '../../utils/pickPhoto';
+import { Geolocation } from '@capacitor/geolocation';
 
 // Same Help.xlsx taxonomy used on Helper Registration — it's the same list of
 // goods/services either side of the match, just read here as "what I need"
@@ -358,11 +360,12 @@ export default function BeneficiaryRegister() {
     return lines;
   };
 
-  const handlePhotoUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const dataUrl = await readFileAsDataURL(file);
-    setUploadedPhoto(dataUrl);
+  // Native "Take Photo / Choose from Library" action sheet (see
+  // utils/pickPhoto.js) instead of a plain file input — this is what
+  // registers the Camera and Photo Library permissions with the OS.
+  const handlePhotoUpload = async () => {
+    const dataUrl = await pickPhoto();
+    if (dataUrl) setUploadedPhoto(dataUrl);
   };
 
   const startRecording = async () => {
@@ -414,15 +417,16 @@ export default function BeneficiaryRegister() {
     dragItemIndex.current = null;
   };
 
-  const useCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      showAppError('Location services are not available in this browser');
-      return;
-    }
+  // @capacitor/geolocation instead of raw navigator.geolocation — this is
+  // what registers the Location permission with iOS/Android natively
+  // (falls back to the browser's own geolocation API automatically when
+  // this app is opened as a plain website).
+  const useCurrentLocation = async () => {
     setLocating(true);
-    navigator.geolocation.getCurrentPosition(async (pos) => {
+    try {
+      const pos = await Geolocation.getCurrentPosition();
+      const { latitude, longitude } = pos.coords;
       try {
-        const { latitude, longitude } = pos.coords;
         const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
         const data = await res.json();
         const a = data.address || {};
@@ -435,13 +439,12 @@ export default function BeneficiaryRegister() {
         }));
       } catch (err) {
         showAppError('Could not detect your address automatically — please enter it manually');
-      } finally {
-        setLocating(false);
       }
-    }, () => {
+    } catch (err) {
       showAppError('Location permission denied — please enter your address manually');
+    } finally {
       setLocating(false);
-    });
+    }
   };
 
   // Preferred regions — "distance to centre" side: live-search a place name as the
@@ -495,14 +498,11 @@ export default function BeneficiaryRegister() {
     setShowRegionSuggestions(false);
   };
 
-  const useCurrentLocationForRegion = () => {
-    if (!navigator.geolocation) {
-      showAppError('Location services are not available in this browser');
-      return;
-    }
+  const useCurrentLocationForRegion = async () => {
     if (regionMode === 'areas') clearAreasMethod();
     setLocatingRegion(true);
-    navigator.geolocation.getCurrentPosition(async (pos) => {
+    try {
+      const pos = await Geolocation.getCurrentPosition();
       const { latitude, longitude } = pos.coords;
       let label = 'Current location';
       try {
@@ -517,11 +517,11 @@ export default function BeneficiaryRegister() {
       setRegionCenterQuery(label);
       setRegionCenter({ lat: latitude, lon: longitude, label });
       setRegionMode('distance');
-      setLocatingRegion(false);
-    }, () => {
+    } catch (err) {
       showAppError('Location permission denied');
+    } finally {
       setLocatingRegion(false);
-    });
+    }
   };
 
   const updatePreferredArea = (value) => {
@@ -583,14 +583,11 @@ export default function BeneficiaryRegister() {
 
   // Same pattern as useCurrentLocationForRegion below, but fills whichever
   // area tab is currently active and runs the duplicate check above.
-  const useCurrentLocationForArea = () => {
-    if (!navigator.geolocation) {
-      showAppError('Location services are not available in this browser');
-      return;
-    }
+  const useCurrentLocationForArea = async () => {
     if (regionMode === 'distance') clearDistanceMethod();
     setLocatingArea(true);
-    navigator.geolocation.getCurrentPosition(async (pos) => {
+    try {
+      const pos = await Geolocation.getCurrentPosition();
       const { latitude, longitude } = pos.coords;
       let label = 'Current location';
       try {
@@ -600,7 +597,6 @@ export default function BeneficiaryRegister() {
       } catch (err) {
         // fall back to the generic label if reverse geocoding fails
       }
-      setLocatingArea(false);
       setAreaSuggestions([]);
       setShowAreaSuggestions(false);
       if (isDuplicateArea(label, activeAreaTab)) {
@@ -612,10 +608,11 @@ export default function BeneficiaryRegister() {
       lastAreaSelectionRef.current = label;
       setPreferredAreas(prev => prev.map((a, i) => i === activeAreaTab ? label : a));
       setRegionMode('areas');
-    }, () => {
+    } catch (err) {
       showAppError('Location permission denied');
+    } finally {
       setLocatingArea(false);
-    });
+    }
   };
 
   const removeArea = (i) => {
@@ -751,10 +748,12 @@ export default function BeneficiaryRegister() {
         localStorage.removeItem('remar_beneficiary_draft_token');
       }
 
-      // Best-effort — if Face ID / Fingerprint was toggled on above, enroll
-      // this device now that the account exists. Never blocks registration:
-      // an unsupported browser, a cancelled OS prompt, or any other failure
-      // here is silently skipped and can be set up again later.
+      // If Face ID / Fingerprint was toggled on above, capture and save a
+      // real credential now that the account exists. Never blocks
+      // registration — an unsupported browser, a cancelled OS prompt, or
+      // any other failure here just surfaces a heads-up popup instead of
+      // silently pretending it worked; it can be captured again later from
+      // Edit Profile.
       if (faceIdEnabled || fingerprintEnabled) {
         try {
           const optionsRes = await api.post('/webauthn/register/options', {}, { headers: { Authorization: `Bearer ${token}` } });
@@ -762,7 +761,7 @@ export default function BeneficiaryRegister() {
           const deviceLabel = [faceIdEnabled && 'face', fingerprintEnabled && 'fingerprint'].filter(Boolean).join('+');
           await api.post('/webauthn/register/verify', { ...credential, deviceLabel }, { headers: { Authorization: `Bearer ${token}` } });
         } catch (err) {
-          // Non-blocking — the beneficiary can still enable this later.
+          showAppError(err.response?.data?.error || err.message || 'Could not capture Face ID / Fingerprint — your account was still created, set it up from Edit Profile.');
         }
       }
 
@@ -776,7 +775,7 @@ export default function BeneficiaryRegister() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
+    <div className="min-h-screen bg-gray-50 py-10 px-4 pb-28">
       <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-lg p-8">
         <h1 className="text-2xl font-bold remar-green mb-1">Beneficiary registration</h1>
         <p className="text-gray-500 mb-6 text-sm">Join us for a better tomorrow</p>
@@ -862,7 +861,8 @@ export default function BeneficiaryRegister() {
                       ›
                     </button>
                   </div>
-                  <label className="w-full aspect-square bg-gray-100 flex flex-col items-center justify-center overflow-hidden p-2 cursor-pointer">
+                  <button type="button" onClick={handlePhotoUpload}
+                    className="w-full aspect-square bg-gray-100 flex flex-col items-center justify-center overflow-hidden p-2 cursor-pointer">
                     {uploadedPhoto ? (
                       <img src={uploadedPhoto} alt="Uploaded" className="w-full h-full object-cover" />
                     ) : (
@@ -871,8 +871,7 @@ export default function BeneficiaryRegister() {
                         <span className="text-[10px] remar-green font-semibold mt-1 px-1 text-center">Upload photo</span>
                       </>
                     )}
-                    <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
-                  </label>
+                  </button>
                 </div>
                 <p className="text-[9px] text-gray-400 mt-2 text-center whitespace-nowrap">If no photo is selected or uploaded, system will select one</p>
               </div>

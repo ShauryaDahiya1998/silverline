@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Remar</string>
+    <string name="title_activity_main">Remar</string>
+    <string name="package_name">ch.remarschweiz.app</string>
+    <string name="custom_url_scheme">ch.remarschweiz.app</string>
+    <!-- Native Facebook Sign-In (@capawesome/capacitor-facebook-sign-in) —
+         from the Meta App Dashboard's app settings (Settings > Basic).
+         Replace both placeholders with your real values; referenced from
+         AndroidManifest.xml's meta-data entries below. -->
+    <string name="facebook_app_id">28512672458325077</string>
+    <string name="facebook_client_token">022c45101b9d0e6e19470cb311ea9796</string>
+</resources>

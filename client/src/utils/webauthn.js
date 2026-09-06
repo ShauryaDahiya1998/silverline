@@ -40,7 +40,12 @@ export async function registerCredential(options) {
 }
 
 // Login — pass the object returned by POST /webauthn/login/options.
-// Resolves to the payload POST /webauthn/login/verify expects.
+// Resolves to the payload POST /webauthn/login/verify expects. When
+// allowCredentials is empty (the passwordless branch of login/options), the
+// platform prompts for any resident/discoverable credential it holds for
+// this RP rather than one specific account, and hands back a userHandle
+// identifying which account was picked — that's what login/verify uses to
+// resolve the account without ever asking for an email/phone.
 export async function getAssertion(options) {
   const publicKey = {
     ...options,
@@ -55,5 +60,6 @@ export async function getAssertion(options) {
       clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
       signature: bufferToBase64url(credential.response.signature),
     },
+    userHandle: credential.response.userHandle ? bufferToBase64url(credential.response.userHandle) : null,
   };
 }

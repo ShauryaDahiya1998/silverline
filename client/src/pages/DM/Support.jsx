@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 // Settings > Support): Bot, Contact us, Chats, Tickets.
 const ITEMS = [
   {
-    key: 'bot', label: 'Bot', path: '/support/chatbot',
+    key: 'bot', label: 'Help bot', path: '/support/chatbot',
     description: 'Get an instant answer from our chat bot.',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 flex-shrink-0">
@@ -27,7 +27,7 @@ const ITEMS = [
   },
   {
     key: 'chats', label: 'Support chats', path: '/support/chats',
-    description: 'Your past conversations with the Bot.',
+    description: 'Your past conversations with the Help bot.',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 flex-shrink-0">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />

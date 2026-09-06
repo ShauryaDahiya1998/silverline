@@ -94,13 +94,21 @@ export default function AdminHome() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4 pb-28">
+    // Same negative-margin/padding-top swap as Dashboard.jsx (helper/
+    // beneficiary Home) — cancels out body's own safe-area-inset-top padding
+    // (which otherwise left a white strip above this grey page) and re-adds
+    // it as this div's own padding so Section 1 still starts exactly 2mm
+    // below the notch/camera area, filled with this page's own background.
+    <div
+      className="min-h-screen bg-gray-50 px-4 pb-28"
+      style={{ marginTop: 'calc(-1 * (env(safe-area-inset-top, 0px) + 2mm))', paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2mm)' }}
+    >
       <div className="max-w-3xl mx-auto">
 
         {/* Section 1 — Account. Admin logins are shared org accounts (no
             personal profile row), so this shows the fixed "Admin" identity
             instead of a photo/nickname. */}
-        <div className="bg-white rounded-2xl shadow-lg p-5 mb-3 mt-[2mm]">
+        <div className="bg-white rounded-2xl shadow-lg p-5 mb-3">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#f0f8e8' }}>
               <svg viewBox="0 0 24 24" fill="#3a6b00" stroke="none" className="w-7 h-7">

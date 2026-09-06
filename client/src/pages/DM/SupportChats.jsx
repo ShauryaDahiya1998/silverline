@@ -23,7 +23,7 @@ export default function SupportChats() {
       <div className="max-w-lg mx-auto">
         <div className="bg-white rounded-2xl shadow-lg p-6">
           <h1 className="text-lg font-bold remar-green mb-1">Support chats</h1>
-          <p className="text-sm text-gray-500 mb-5">Your past conversations with the Bot.</p>
+          <p className="text-sm text-gray-500 mb-5">Your past conversations with the Help bot.</p>
 
           <button type="button" onClick={() => navigate('/support/chatbot')}
             className="w-full text-sm font-semibold text-white px-4 py-2.5 rounded-lg hover:opacity-90 transition mb-5"

@@ -378,6 +378,78 @@ const migrations = [
 `ALTER TABLE assignments ADD COLUMN IF NOT EXISTS calendar_ics_uid VARCHAR(64)`,
 `ALTER TABLE assignments ADD COLUMN IF NOT EXISTS calendar_sequence INTEGER NOT NULL DEFAULT 0`,
 `ALTER TABLE assignments ADD COLUMN IF NOT EXISTS calendar_sent_at TIMESTAMP`,
+// Device tokens for push notifications (see utils/pushNotifications.js /
+// routes/pushTokens.js) — registering one is what actually makes iOS/
+// Android show a real Notifications permission toggle for this app, unlike
+// Settings.jsx's Notifications row, which only deep-links to whatever
+// permission state already exists. One user can have several tokens (one
+// per device they've logged in on); token itself is unique so re-registering
+// the same device just updates which user it's currently tied to.
+`CREATE TABLE IF NOT EXISTS push_tokens (
+  id SERIAL PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token VARCHAR(255) NOT NULL UNIQUE,
+  platform VARCHAR(20) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+// Settings > App preferences > Notifications — per-event-type channel
+// choices (see routes/preferences.js and utils/notifier.js). Shape:
+// { "help_status": { "email": true, "sms": false, "whatsapp": false },
+//   "messages": { "email": true, "sms": false, "whatsapp": false } }.
+// Defaults to email-on/others-off for both known event types so existing
+// users start getting the same coverage the old always-email behavior gave
+// them, without doing anything themselves.
+`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_channels JSONB NOT NULL DEFAULT '{"help_status":{"email":true,"sms":false,"whatsapp":false},"messages":{"email":true,"sms":false,"whatsapp":false},"new_help":{"email":true,"sms":false,"whatsapp":false}}'`,
+// Backfill for rows created before 'new_help' existed above — the
+// column-level DEFAULT only applies to brand-new rows, so anyone who
+// registered earlier has a notification_channels value missing this key
+// entirely. Merges it in without touching help_status/messages, and is a
+// no-op (the `?` "does this key exist" check) for anyone who already has
+// it, so this is safe to rerun every server start like every other
+// migration here.
+`UPDATE users SET notification_channels = notification_channels || '{"new_help":{"email":true,"sms":false,"whatsapp":false}}'::jsonb WHERE NOT (notification_channels ? 'new_help')`,
+// Settings > App preferences > Device — vibration on incoming push
+// notifications (see utils/pushNotifications.js's registration listener).
+`ALTER TABLE users ADD COLUMN IF NOT EXISTS vibration_enabled BOOLEAN NOT NULL DEFAULT TRUE`,
+// Settings > App preferences > Notifications > New Help Available — one
+// saved "subscription" per user describing which new Help Universe items
+// should trigger a notification (see utils/notifier.js's push/email/SMS/
+// WhatsApp dispatch and routes/help.js's POST / matching logic). Mirrors
+// the same three dimensions as the Help Universe filter panel itself
+// (MapView.jsx): categories (empty = any), day/from/to (matched against
+// the new item's own creator's availability — empty day = don't check),
+// and logistics (pickup/dropoff, empty = don't check). Disabled by default
+// — this only ever fires for someone who's deliberately turned it on.
+`ALTER TABLE users ADD COLUMN IF NOT EXISTS help_subscription JSONB NOT NULL DEFAULT '{"enabled":false,"categories":[],"day":"","from":"","to":"","logistics":[]}'`,
+// Settings > Support > Give App Feedback (rating + text box, see
+// routes/feedback.js) — one row per submission, always emailed to
+// SUPPORT_EMAIL on insert. public_consent is only ever set for a 5-star
+// submission, after the client's follow-up "post this publicly?" prompt —
+// NULL means either not a 5-star or not yet answered, so the admin Feedback
+// page (Settings > My account > Feedback) can tell "hasn't been asked" apart
+// from "said no".
+`CREATE TABLE IF NOT EXISTS app_feedback (
+  id SERIAL PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  feedback_text TEXT NOT NULL,
+  public_consent BOOLEAN,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+// Donate > Bank transfer — one row per bank tab shown on the Donate page
+// (see routes/bankAccounts.js and client's Donate.jsx/AdminBankDetails.jsx).
+// Admin-editable from Settings > My account > Bank details; every other
+// role only ever reads this table (GET /bank-accounts, authenticate-only).
+`CREATE TABLE IF NOT EXISTS bank_accounts (
+  id SERIAL PRIMARY KEY,
+  label VARCHAR(255) NOT NULL,
+  account_holder VARCHAR(255) NOT NULL,
+  bank_name VARCHAR(255) NOT NULL,
+  iban VARCHAR(255) NOT NULL,
+  bic VARCHAR(255) NOT NULL,
+  reference VARCHAR(255) NOT NULL DEFAULT 'Donation',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
 ];
 for (const m of migrations) {
 try { await pool.query(m); } catch (err) { console.error('Migration error:', err.message); }
@@ -490,6 +562,30 @@ await pool.query('INSERT INTO auto_match_rules (logic) VALUES ($1)', [DEFAULT_AU
 }
 } catch (err) {
 console.error('Auto-match rule seed error:', err.message);
+}
+
+// Donate > Bank transfer starts with these four real REMAR accounts on
+// record, as supplied. Seeded only when the table is completely empty (not
+// matched row-by-row like the auto-match rule above) so an admin deleting
+// one of these later doesn't cause it to silently reappear on next server
+// start — this only ever fires once, the very first time the table exists
+// with nothing in it.
+try {
+const bankCount = await pool.query('SELECT COUNT(*) FROM bank_accounts');
+if (Number(bankCount.rows[0].count) === 0) {
+await pool.query(
+`INSERT INTO bank_accounts (label, account_holder, bank_name, iban, bic, reference) VALUES
+($1,$2,$3,$4,$5,$6), ($7,$8,$9,$10,$11,$12), ($13,$14,$15,$16,$17,$18), ($19,$20,$21,$22,$23,$24)`,
+[
+'Switzerland Bank 1', 'Remar Schweiz', 'Raiffeisen Schweiz Genossenschaft', 'CH24 8080 8004 4690 0132 6', 'RAIFCH22', 'Donation',
+'Switzerland Bank 2', 'Remar Schweiz', 'Raiffeisenbank Uster', 'CH95 8147 1000 0046 6159 6', 'RAIFCH22E71', 'Donation',
+'Germany Bank 1', 'Remar Schweiz', 'Commerzbank Stuttgart', 'DE 2460 0800 0009 0290 3500', 'DRES DE FF', 'Donation',
+'Austria Bank 1', 'Remar Schweiz', 'Raiffeisenbank Lustenau', 'AT72 3745 3000 0042 1990', 'RAOCAT21', 'Donation',
+]
+);
+}
+} catch (err) {
+console.error('Bank account seed error:', err.message);
 }
 
 // Remar Store — a fixed system "helper" account (member_number 'HRR0000',

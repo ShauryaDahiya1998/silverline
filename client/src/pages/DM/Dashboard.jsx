@@ -103,14 +103,24 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4 pb-28">
+    // body's own safe-area-inset-top padding (index.css) leaves its default
+    // white background showing above this page's grey one — cancelled out
+    // here with a matching negative margin (pulling this div's own grey
+    // background up through that gap) and re-added as this div's own
+    // padding-top instead, so Section 1 still starts exactly 2mm below the
+    // notch/camera area, just with no white strip and no extra py-8 gap
+    // above it.
+    <div
+      className="min-h-screen bg-gray-50 px-4 pb-28"
+      style={{ marginTop: 'calc(-1 * (env(safe-area-inset-top, 0px) + 2mm))', paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2mm)' }}
+    >
       <div className="max-w-3xl mx-auto">
 
         {/* Section 1 — Profile. Photo and name are themselves the "view
             profile" link (no separate button) — clicking either opens the
             read-only public profile page. Role | member ID | account ID
             sits to the right of the role label. */}
-        <div className="bg-white rounded-2xl shadow-lg p-5 mb-3 mt-[2mm]">
+        <div className="bg-white rounded-2xl shadow-lg p-5 mb-3">
           <div className="flex items-center gap-4">
             <button type="button" disabled={!viewProfilePath} onClick={() => viewProfilePath && navigate(viewProfilePath)}
               className="flex-shrink-0 disabled:cursor-default">

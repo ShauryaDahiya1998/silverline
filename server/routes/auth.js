@@ -203,18 +203,25 @@ resolve(parsed);
 // proves who the person is on Facebook's side, and we log them into their
 // existing REMAR account if the Facebook email matches one.
 router.post('/facebook', async (req, res) => {
-const { accessToken } = req.body;
+// .trim() guards against a stray trailing newline/space in the token or in
+// the Render-dashboard env vars (sync: false, so these are hand-pasted) —
+// that's enough by itself to make Facebook's debug_token endpoint reject
+// the request with "Cannot parse access token".
+const accessToken = (req.body.accessToken || '').trim();
 if (!accessToken) return res.status(400).json({ error: 'Missing Facebook access token' });
-if (!process.env.FACEBOOK_APP_ID || !process.env.FACEBOOK_APP_SECRET) {
+const fbAppId = (process.env.FACEBOOK_APP_ID || '').trim();
+const fbAppSecret = (process.env.FACEBOOK_APP_SECRET || '').trim();
+if (!fbAppId || !fbAppSecret) {
 return res.status(500).json({ error: 'Facebook sign-in is not configured on this server' });
 }
 try {
 // Confirm the token was actually issued for our app (not lifted from a
 // different site) before trusting anything it says about the user.
 const debug = await httpsGetJson(
-`https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${process.env.FACEBOOK_APP_ID}|${process.env.FACEBOOK_APP_SECRET}`
+`https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(fbAppId + '|' + fbAppSecret)}`
 );
-if (!debug.data?.is_valid || debug.data.app_id !== process.env.FACEBOOK_APP_ID) {
+console.log('[facebook-debug-token]', JSON.stringify(debug.data), 'expected app_id:', fbAppId, 'token len:', accessToken.length, 'token prefix:', accessToken.slice(0, 6));
+if (!debug.data?.is_valid || debug.data.app_id !== fbAppId) {
 return res.status(401).json({ error: 'Invalid Facebook sign-in' });
 }
 

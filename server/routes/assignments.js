@@ -5,6 +5,7 @@ const nodemailer = require('nodemailer');
 const { buildIcs } = require('../utils/ics');
 const { sendCalendarInvite } = require('../utils/email');
 const { computeDefaultValueAndHours } = require('../utils/helpPricing');
+const { notifyUser } = require('../utils/notifier');
 const router = express.Router();
 
 // Fills in a newly-Matched help item's Value/Hours with computed defaults
@@ -332,7 +333,7 @@ try {
 // only ever set on a Remar Store/admin-owned item (see POST /help) — used
 // below to gate admin's power over a still-pending request.
 const check = await db.query(
-`SELECT a.id, a.status AS current_status, a.help_row_id, h.created_by, h.direction,
+`SELECT a.id, a.status AS current_status, a.help_row_id, h.created_by, h.direction, h.help_id, h.title,
 v.user_id AS volunteer_user_id, b.user_id AS beneficiary_user_id
 FROM assignments a
 JOIN helps h ON a.help_row_id = h.id
@@ -386,6 +387,24 @@ await db.query("UPDATE helps SET status='open' WHERE id=(SELECT help_row_id FROM
 const autoApproved = await evaluateAutoApprovalRule1(req.params.id);
 if (autoApproved) result.rows[0].admin_approved = true;
 }
+
+// Settings > App preferences > Notifications ('help_status' event) — let
+// whichever party on this assignment did NOT make this change know the
+// status moved. Best-effort/non-blocking (see notifyUser) so a
+// notification-delivery problem never affects the response below.
+const statusLabel = status === 'confirmed'
+? (result.rows[0].admin_approved ? 'Matched' : 'Accepted (pending admin approval)')
+: status === 'cancelled' ? 'Rejected / Cancelled'
+: 'Reverted to Requested';
+const otherPartyIds = [row.volunteer_user_id, row.beneficiary_user_id]
+.filter((id) => id && id !== req.user.id);
+for (const id of otherPartyIds) {
+notifyUser(id, 'help_status', {
+subject: `REMAR Schweiz: Help ${row.help_id || ''} status update`,
+text: `The status of Help ${row.help_id || ''} (${row.title || ''}) changed to: ${statusLabel}.`,
+});
+}
+
 res.json(result.rows[0]);
 } catch (err) {
 res.status(500).json({ error: err.message });

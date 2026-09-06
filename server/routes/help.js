@@ -3,6 +3,7 @@ const db = require('../database/db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { formatHelpId, parseHelpIdSequence } = require('../utils/helpId');
 const { parseDevice } = require('../utils/device');
+const { notifyHelpSubscribers } = require('../utils/helpSubscriptions');
 const router = express.Router();
 
 // Get all help requests/offers — used by the admin-facing pages
@@ -104,6 +105,14 @@ COALESCE(v.longitude, b.longitude) AS longitude,
 COALESCE(v.address, b.address) AS address,
 COALESCE(h.confirm_city, v.city, b.city) AS location_city,
 COALESCE(h.confirm_pincode, v.pincode, b.pincode) AS location_pincode,
+-- Weekly availability slots, same JSONB shape either side (see
+-- HelperRegister.jsx/BeneficiaryRegister.jsx's emptyAvailability: one array
+-- per weekday of up to 3 {from,to} slots) — helpers store it as
+-- availability, beneficiaries as time_preferences, same underlying data.
+-- Previously never selected here at all, so MapView.jsx's Day/Time filter
+-- had nothing real to match against (see its own slots:[] — now populated
+-- from this).
+COALESCE(v.availability, b.time_preferences) AS availability_json,
 mine.status AS my_assignment_status
 FROM helps h
 JOIN users u ON u.id = h.created_by
@@ -810,11 +819,17 @@ const { type: deviceType, brand: deviceBrand } = parseDevice(userAgent);
 // caller that does collect one) only if the creator has no address on
 // file. Admin accounts have no helpers/beneficiaries row of their own, so
 // a Store item just uses whatever location was explicitly passed (if any).
+// Also pulls this creator's own weekly availability (availability for a
+// helper, time_preferences for a beneficiary — same JSONB shape either
+// way) in the same query, aliased to a common name — needed below to match
+// subscribers' Day/Time filter (see notifyHelpSubscribers) against
+// whoever's actually posting this item, not the subscriber's own schedule.
 const addressRes = creatorRole === 'admin' ? null : await db.query(
-`SELECT address FROM ${creatorRole === 'helper' ? 'helpers' : 'beneficiaries'} WHERE user_id = $1`,
+`SELECT address, ${creatorRole === 'helper' ? 'availability' : 'time_preferences'} AS availability FROM ${creatorRole === 'helper' ? 'helpers' : 'beneficiaries'} WHERE user_id = $1`,
 [createdBy]
 );
 const ownAddress = addressRes?.rows[0]?.address || null;
+const creatorAvailability = addressRes?.rows[0]?.availability || null;
 const result = await db.query(
 `INSERT INTO helps (title, description, created_by, required_skills, location, scheduled_date, duration_hours, category, sub_category, quantity, unit, condition, age_value, age_unit, help_id, created_ip, created_user_agent, device_type, device_brand, photo_urls, direction, logistics_preference,
   is_online, confirm_street, confirm_house_number, confirm_city, confirm_pincode, confirm_latitude, confirm_longitude)
@@ -834,6 +849,22 @@ is_online ? null : (confirm_pincode || null),
 is_online ? null : (confirm_latitude || null),
 is_online ? null : (confirm_longitude || null)]
 );
+
+// Settings > App preferences > Notifications > New Help Available — see
+// utils/helpSubscriptions.js. Fire-and-forget: never awaited, and the
+// function itself catches everything, so a notification-side problem can
+// never turn a successful Help creation into a failed request.
+notifyHelpSubscribers({
+helpRowId: result.rows[0].id,
+helpId,
+title,
+category: category || null,
+logisticsPreference,
+creatorRole,
+direction: (isAdminDirect || isStoreItem) ? direction : null,
+creatorAvailability,
+});
+
 res.status(201).json(result.rows[0]);
 } catch (err) {
 res.status(500).json({ error: err.message });

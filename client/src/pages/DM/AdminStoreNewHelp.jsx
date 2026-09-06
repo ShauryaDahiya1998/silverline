@@ -6,6 +6,7 @@ import { showAppError } from '../../utils/errorBus';
 import ConfirmLocationField from '../../components/ConfirmLocationField';
 import ConfirmModal from '../../components/ConfirmModal';
 import { getStatusLabel } from '../../utils/helpStatus';
+import { pickPhoto } from '../../utils/pickPhoto';
 
 const AGE_UNITS = ['Days', 'Weeks', 'Months', 'Years'];
 const CONDITION_CATEGORIES = ['Food', 'Clothes', 'Toiletries'];
@@ -31,12 +32,6 @@ const LOGISTICS_OPTIONS = {
 };
 const LOGISTICS_LABEL = { offer: 'Delivery preference', request: 'Collection preference' };
 
-const readFileAsDataURL = (file) => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(reader.result);
-  reader.onerror = reject;
-  reader.readAsDataURL(file);
-});
 
 // "10 Aug" style short date, matching NewHelp.jsx's own duplicate-warning popup.
 const formatShortDate = (d) => {
@@ -124,23 +119,19 @@ export default function AdminStoreNewHelp() {
     setLogisticsPreference([]);
   };
 
-  const handlePhotoSelect = async (e) => {
-    const files = Array.from(e.target.files || []);
-    e.target.value = '';
-    if (!files.length) return;
-    const room = MAX_PHOTOS - photos.length;
-    if (room <= 0) {
+  // Native "Take Photo / Choose from Library" action sheet (see
+  // utils/pickPhoto.js) — one photo per tap, matching NewHelp.jsx.
+  const handlePhotoSelect = async () => {
+    if (photos.length >= MAX_PHOTOS) {
       setPhotoError(`You can upload up to ${MAX_PHOTOS} photos.`);
       return;
     }
-    const toAdd = files.slice(0, room);
-    if (files.length > room) setPhotoError(`Only added ${room} photo${room === 1 ? '' : 's'} — ${MAX_PHOTOS} max.`);
-    else setPhotoError('');
+    setPhotoError('');
     try {
-      const dataUrls = await Promise.all(toAdd.map(readFileAsDataURL));
-      setPhotos(prev => [...prev, ...dataUrls]);
+      const dataUrl = await pickPhoto();
+      if (dataUrl) setPhotos(prev => [...prev, dataUrl]);
     } catch {
-      setPhotoError('Could not read one of those photos — please try again.');
+      setPhotoError('Could not access the camera/photos — please try again.');
     }
   };
 
@@ -347,10 +338,10 @@ export default function AdminStoreNewHelp() {
                       </div>
                     ))}
                     {photos.length < MAX_PHOTOS && (
-                      <label className="w-16 h-16 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xl cursor-pointer hover:bg-gray-50">
+                      <button type="button" onClick={handlePhotoSelect}
+                        className="w-16 h-16 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xl cursor-pointer hover:bg-gray-50">
                         +
-                        <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
-                      </label>
+                      </button>
                     )}
                   </div>
                   {photoError && <p className="text-xs text-red-600 mt-1.5">{photoError}</p>}

@@ -1,9 +1,12 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PreferencesProvider, usePreferences } from './context/PreferencesContext';
 import BottomNav from './components/BottomNav';
 import ErrorModal from './components/ErrorModal';
+import NotificationToast from './components/NotificationToast';
 import ScrollToTop from './components/ScrollToTop';
+import { registerPush } from './utils/pushNotifications';
 // All current, live pages moved into pages/DM/ ("Desktop Mac") — the
 // existing single production app, unchanged in behavior. pages/MI/
 // ("Mobile iPhone") is where redesigned mobile-first versions land as each
@@ -22,6 +25,7 @@ import AdminCertificates from './pages/DM/AdminCertificates';
 import AdminReports from './pages/DM/AdminReports';
 import AdminEscalations from './pages/DM/AdminEscalations';
 import AdminAutoMatch from './pages/DM/AdminAutoMatch';
+import AdminBankDetails from './pages/DM/AdminBankDetails';
 import AdminDonation from './pages/DM/AdminDonation';
 import AdminStoreLocation from './pages/DM/AdminStoreLocation';
 import AdminHelpOngoingList from './pages/DM/AdminHelpOngoingList';
@@ -53,7 +57,13 @@ import Support from './pages/DM/Support';
 import SupportContact from './pages/DM/SupportContact';
 import SupportChats from './pages/DM/SupportChats';
 import SupportTickets from './pages/DM/SupportTickets';
+import GiveFeedback from './pages/DM/GiveFeedback';
+import AdminFeedback from './pages/DM/AdminFeedback';
 import ChangePassword from './pages/DM/ChangePassword';
+import DeviceSettings from './pages/DM/DeviceSettings';
+import NotificationPreferences from './pages/DM/NotificationPreferences';
+import PrivacyPolicy from './pages/DM/PrivacyPolicy';
+import AboutRemar from './pages/DM/AboutRemar';
 import DeleteAccount from './pages/DM/DeleteAccount';
 import Messages from './pages/DM/Messages';
 import Index from './pages/Index';
@@ -90,6 +100,15 @@ function AppRoutes() {
 // viewport-fixed into "fixed relative to this div" (i.e. it scrolled with
 // the page) whenever a non-standard theme was active.
 const { colorFilter } = usePreferences();
+const { user } = useAuth();
+// Registers this device for push notifications once someone's actually
+// logged in (see utils/pushNotifications.js) — this is what makes iOS/
+// Android register the Notifications permission for real, rather than
+// just deep-linking to whatever permission state already exists (see
+// Settings.jsx's Notifications row). No-ops on web / before login.
+useEffect(() => {
+if (user) registerPush();
+}, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 return (
 <>
 <ScrollToTop />
@@ -135,6 +154,9 @@ return (
 } />
 <Route path="/admin/auto-match" element={
 <ProtectedRoute roles={['admin']}><AdminAutoMatch /></ProtectedRoute>
+} />
+<Route path="/admin/bank-details" element={
+<ProtectedRoute roles={['admin']}><AdminBankDetails /></ProtectedRoute>
 } />
 {/* Admin's own full-list equivalents of Help ongoing/history — system-wide
     rather than scoped to one account's GET /help/mine. Declared alongside
@@ -227,11 +249,29 @@ return (
 <Route path="/support/tickets" element={
 <ProtectedRoute roles={['helper', 'beneficiary']}><SupportTickets /></ProtectedRoute>
 } />
+<Route path="/support/feedback" element={
+<ProtectedRoute roles={['helper', 'beneficiary']}><GiveFeedback /></ProtectedRoute>
+} />
+<Route path="/admin/feedback" element={
+<ProtectedRoute roles={['admin']}><AdminFeedback /></ProtectedRoute>
+} />
 <Route path="/messages" element={
 <ProtectedRoute roles={['helper', 'beneficiary', 'admin']}><Messages /></ProtectedRoute>
 } />
 <Route path="/change-password" element={
 <ProtectedRoute roles={['helper', 'beneficiary', 'admin']}><ChangePassword /></ProtectedRoute>
+} />
+<Route path="/settings/device" element={
+<ProtectedRoute roles={['helper', 'beneficiary', 'admin']}><DeviceSettings /></ProtectedRoute>
+} />
+<Route path="/settings/notifications" element={
+<ProtectedRoute roles={['helper', 'beneficiary', 'admin']}><NotificationPreferences /></ProtectedRoute>
+} />
+<Route path="/settings/about" element={
+<ProtectedRoute roles={['helper', 'beneficiary', 'admin']}><AboutRemar /></ProtectedRoute>
+} />
+<Route path="/settings/privacy" element={
+<ProtectedRoute roles={['helper', 'beneficiary', 'admin']}><PrivacyPolicy /></ProtectedRoute>
 } />
 <Route path="/delete-account" element={
 <ProtectedRoute roles={['helper', 'beneficiary']}><DeleteAccount /></ProtectedRoute>
@@ -276,6 +316,7 @@ return (
 </div>
 <BottomNav />
 <ErrorModal />
+<NotificationToast />
 </>
 );
 }

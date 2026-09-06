@@ -65,7 +65,15 @@ export default function Store() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4 pb-28">
+    // Same negative-margin/padding-top swap as Dashboard.jsx/Settings.jsx —
+    // cancels body's own safe-area-inset-top padding (a white strip above
+    // this grey page otherwise), re-added here as just 3mm total (was 2mm +
+    // the original py-8's 2rem) so the title sits close under the
+    // camera/notch area.
+    <div
+      className="min-h-screen bg-gray-50 px-4 pb-28"
+      style={{ marginTop: 'calc(-1 * (env(safe-area-inset-top, 0px) + 2mm))', paddingTop: 'calc(env(safe-area-inset-top, 0px) + 3mm)' }}
+    >
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-1 gap-2">
           <h1 className="text-lg font-bold remar-green">Remar Store</h1>

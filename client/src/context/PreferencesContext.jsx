@@ -5,7 +5,22 @@ import { translations } from '../i18n/translations';
 
 const PreferencesContext = createContext(null);
 
-const DEFAULT_PREFS = { currency: 'Fr', language: 'en', font_size: 100, color_theme: 'standard' };
+const DEFAULT_NOTIFICATION_CHANNELS = {
+  help_status: { email: true, sms: false, whatsapp: false },
+  messages: { email: true, sms: false, whatsapp: false },
+  new_help: { email: true, sms: false, whatsapp: false },
+};
+
+// Settings > App preferences > Notifications > New Help Available — see
+// db.js's help_subscription migration and utils/helpSubscriptions.js (the
+// server-side matcher that reads this). Disabled by default.
+const DEFAULT_HELP_SUBSCRIPTION = { enabled: false, categories: [], day: '', from: '', to: '', logistics: [] };
+
+const DEFAULT_PREFS = {
+  currency: 'Fr', language: 'en', font_size: 100, color_theme: 'standard',
+  vibration_enabled: true, notification_channels: DEFAULT_NOTIFICATION_CHANNELS,
+  help_subscription: DEFAULT_HELP_SUBSCRIPTION,
+};
 
 // Settings > App preferences > Color. A CSS filter on the whole app is the
 // only way to re-tint every existing color (buttons, gradients, icons,
@@ -68,6 +83,9 @@ language: prefs.language,
 fontSize: prefs.font_size,
 colorTheme: prefs.color_theme,
 colorFilter: COLOR_FILTERS[prefs.color_theme] || 'none',
+vibrationEnabled: prefs.vibration_enabled,
+notificationChannels: prefs.notification_channels || DEFAULT_NOTIFICATION_CHANNELS,
+helpSubscription: prefs.help_subscription || DEFAULT_HELP_SUBSCRIPTION,
 updatePreferences,
 t,
 // `${amount}` values in this app are always plain numbers/strings with no

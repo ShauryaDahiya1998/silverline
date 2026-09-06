@@ -1,0 +1,9 @@
+{
+  "appId": "ch.remarschweiz.app",
+  "appName": "Remar",
+  "webDir": "dist",
+  "server": {
+    "url": "http://192.168.178.27:5173",
+    "cleartext": true
+  }
+}
