@@ -58,6 +58,18 @@ public class PasskeyPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve(["value": available])
     }
 
+    // Capacitor dispatches plugin call methods on a background bridge
+    // queue, not the main thread. Keychain operations that carry
+    // kSecUseAuthenticationContext (i.e. that can trigger the Face ID/
+    // Touch ID system UI) must run on the main thread or iOS silently
+    // cancels the authentication request (LAError.userCancel / errSecUser-
+    // Canceled) without ever showing the prompt — which is exactly the
+    // "was cancelled" symptom. Route the actual Keychain/biometric work
+    // through here from register()/authenticate() below.
+    private func onMain(_ work: @escaping () -> Void) {
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
+    }
+
     // Matches POST /webauthn/register/options' response shape: challenge
     // (base64url), rp.id, user.id (base64url), user.name/displayName —
     // displayName/name aren't actually used in the credential we build
@@ -73,23 +85,25 @@ public class PasskeyPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
-        do {
-            let credentialId = randomBytes(16)
-            let publicKeyBytes = try createReplacementKeyPair()
-            let authData = buildAuthenticatorData(rpId: rpId, flags: 0x45, credentialId: credentialId, publicKeyBytes: publicKeyBytes)
-            let attestationObject = buildAttestationObject(authData: authData)
-            let clientDataJSON = buildClientDataJSON(type: "webauthn.create", challengeB64: challengeB64, rpId: rpId)
+        onMain {
+            do {
+                let credentialId = self.randomBytes(16)
+                let publicKeyBytes = try self.createReplacementKeyPair()
+                let authData = self.buildAuthenticatorData(rpId: rpId, flags: 0x45, credentialId: credentialId, publicKeyBytes: publicKeyBytes)
+                let attestationObject = self.buildAttestationObject(authData: authData)
+                let clientDataJSON = self.buildClientDataJSON(type: "webauthn.create", challengeB64: challengeB64, rpId: rpId)
 
-            UserDefaults.standard.set(userIdB64, forKey: defaultsUserIdKey)
-            UserDefaults.standard.set(credentialId.base64URLEncodedString(), forKey: defaultsCredentialIdKey)
+                UserDefaults.standard.set(userIdB64, forKey: self.defaultsUserIdKey)
+                UserDefaults.standard.set(credentialId.base64URLEncodedString(), forKey: self.defaultsCredentialIdKey)
 
-            call.resolve([
-                "rawId": credentialId.base64URLEncodedString(),
-                "attestationObject": attestationObject.base64URLEncodedString(),
-                "clientDataJSON": clientDataJSON.base64URLEncodedString()
-            ])
-        } catch {
-            call.reject("Could not set up Face ID / Fingerprint: \(error.localizedDescription)", nil, error)
+                call.resolve([
+                    "rawId": credentialId.base64URLEncodedString(),
+                    "attestationObject": attestationObject.base64URLEncodedString(),
+                    "clientDataJSON": clientDataJSON.base64URLEncodedString()
+                ])
+            } catch {
+                call.reject("Could not set up Face ID / Fingerprint: \(error.localizedDescription)", nil, error)
+            }
         }
     }
 
@@ -113,25 +127,27 @@ public class PasskeyPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
-        let context = LAContext()
-        context.localizedReason = "Sign in to Remar"
+        onMain {
+            let context = LAContext()
+            context.localizedReason = "Sign in to Remar"
 
-        let clientDataJSON = buildClientDataJSON(type: "webauthn.get", challengeB64: challengeB64, rpId: rpId)
-        let clientDataHash = Data(SHA256.hash(data: clientDataJSON))
-        let authData = buildAuthenticatorData(rpId: rpId, flags: 0x05, credentialId: nil, publicKeyBytes: nil)
-        let signedData = authData + clientDataHash
+            let clientDataJSON = self.buildClientDataJSON(type: "webauthn.get", challengeB64: challengeB64, rpId: rpId)
+            let clientDataHash = Data(SHA256.hash(data: clientDataJSON))
+            let authData = self.buildAuthenticatorData(rpId: rpId, flags: 0x05, credentialId: nil, publicKeyBytes: nil)
+            let signedData = authData + clientDataHash
 
-        do {
-            let signature = try sign(data: signedData, context: context)
-            call.resolve([
-                "rawId": credentialIdB64,
-                "authenticatorData": authData.base64URLEncodedString(),
-                "clientDataJSON": clientDataJSON.base64URLEncodedString(),
-                "signature": signature.base64URLEncodedString(),
-                "userHandle": userIdB64
-            ])
-        } catch {
-            call.reject("Face ID / Fingerprint sign-in failed or was cancelled", nil, error)
+            do {
+                let signature = try self.sign(data: signedData, context: context)
+                call.resolve([
+                    "rawId": credentialIdB64,
+                    "authenticatorData": authData.base64URLEncodedString(),
+                    "clientDataJSON": clientDataJSON.base64URLEncodedString(),
+                    "signature": signature.base64URLEncodedString(),
+                    "userHandle": userIdB64
+                ])
+            } catch {
+                call.reject("Face ID / Fingerprint sign-in failed or was cancelled", nil, error)
+            }
         }
     }
 
