@@ -18,6 +18,13 @@
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<!-- Skips the "Does your app use encryption?" prompt on every TestFlight/
+	     App Store upload — the app only uses standard HTTPS (via WKWebView
+	     and axios), which Apple exempts, so this is accurate, not a
+	     workaround. If real custom/proprietary encryption is ever added,
+	     this must be removed and the question answered honestly instead. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>

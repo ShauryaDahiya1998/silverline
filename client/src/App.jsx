@@ -273,6 +273,10 @@ return (
 <Route path="/settings/privacy" element={
 <ProtectedRoute roles={['helper', 'beneficiary', 'admin']}><PrivacyPolicy /></ProtectedRoute>
 } />
+{/* Public alias, no login required — App Store Connect's Privacy Policy
+    URL field (and App Review) must be able to load this without an
+    account, which /settings/privacy above can't satisfy. */}
+<Route path="/privacy-policy" element={<PrivacyPolicy />} />
 <Route path="/delete-account" element={
 <ProtectedRoute roles={['helper', 'beneficiary']}><DeleteAccount /></ProtectedRoute>
 } />
