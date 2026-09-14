@@ -48,9 +48,9 @@ public class PasskeyPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "removeCredential", returnType: CAPPluginReturnPromise)
     ]
 
-    private let keyTag = "ch.remarschweizverein.app.passkeyKey".data(using: .utf8)!
-    private let defaultsUserIdKey = "ch.remarschweizverein.app.passkeyUserId"
-    private let defaultsCredentialIdKey = "ch.remarschweizverein.app.passkeyCredentialId"
+    private let keyTag = "silverline.remar.app.ch.passkeyKey".data(using: .utf8)!
+    private let defaultsUserIdKey = "silverline.remar.app.ch.passkeyUserId"
+    private let defaultsCredentialIdKey = "silverline.remar.app.ch.passkeyCredentialId"
 
     @objc func isAvailable(_ call: CAPPluginCall) {
         var error: NSError?
