@@ -273,7 +273,7 @@ style={{ background: '#f7f9f4' }}>
 </div>
 <p className="text-gray-500 text-sm mt-2">Schweiz</p>
 <p className="text-gray-600 text-lg mt-6 leading-relaxed">
-Connecting helpers with people who need support across Switzerland.
+Connecting helpers with people in need globally.
 </p>
 <p className="text-gray-400 text-sm mt-6 italic">
 "Every contribution counts."
