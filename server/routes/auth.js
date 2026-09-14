@@ -163,8 +163,18 @@ return res.status(500).json({ error: 'Google sign-in is not configured on this s
 // "Invalid Google sign-in" error even though the token was perfectly
 // valid. Accept any of our own registered client IDs as a valid audience
 // instead of just the web one.
-const allowedAudiences = [process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_IOS_CLIENT_ID, process.env.GOOGLE_ANDROID_CLIENT_ID].filter(Boolean);
+// .trim() guards against a trailing newline/space sneaking in from
+// copy-pasting these into Render's env var UI, which would otherwise make
+// an exact-match comparison silently fail even though the values "look"
+// identical when eyeballed.
+const allowedAudiences = [process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_IOS_CLIENT_ID, process.env.GOOGLE_ANDROID_CLIENT_ID]
+.filter(Boolean)
+.map(id => id.trim());
 if (!allowedAudiences.includes(payload.aud)) {
+// Logged (not returned to the client, to avoid leaking client IDs) so
+// this is diagnosable from Render's Logs tab instead of guessing blind
+// next time this fires.
+console.error('[google-signin] aud mismatch:', { received: payload.aud, allowed: allowedAudiences });
 return res.status(401).json({ error: 'Invalid Google sign-in' });
 }
 if (payload.email_verified !== 'true' && payload.email_verified !== true) {
