@@ -121,9 +121,26 @@ const nativeAuthInitialized = useRef(false);
 useEffect(() => {
 if (!isNative || nativeAuthInitialized.current) return;
 nativeAuthInitialized.current = true;
+if (Capacitor.getPlatform() === 'android') {
+// Android has no Info.plist-equivalent auto-config, so the web client ID
+// must be passed explicitly here — Android's Google Sign-In SDK uses it
+// as the "server client ID" so the resulting ID token's audience is the
+// backend-verifiable web client (see GOOGLE_CLIENT_ID handling in
+// server/routes/auth.js).
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 if (googleClientId) {
 GoogleSignIn.initialize({ clientId: googleClientId }).catch(() => {});
+}
+} else {
+// iOS: do NOT pass clientId here. The plugin reads GIDClientID straight
+// out of Info.plist on its own — passing the web client ID (as this used
+// to, unconditionally) silently overrode that and made the native app
+// sign in AS the web client instead. The resulting ID token's audience
+// was then always the web GOOGLE_CLIENT_ID, never GOOGLE_IOS_CLIENT_ID,
+// so it kept failing server-side with "Invalid Google sign-in" — even
+// though the sign-in flow itself completed successfully and looked fine
+// from the app's side. See server/routes/auth.js's /google route.
+GoogleSignIn.initialize().catch(() => {});
 }
 // appId/clientToken are read from the native Info.plist/AndroidManifest
 // config on iOS/Android (see the setup guide) — nothing to pass here.
