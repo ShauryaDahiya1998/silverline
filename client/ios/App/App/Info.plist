@@ -63,6 +63,13 @@
 	     defensively since it's a cheap, harmless addition. -->
 	<key>NSFaceIDUsageDescription</key>
 	<string>Remar uses Face ID/Touch ID to let you sign in securely without typing your password.</string>
+	<!-- App Tracking Transparency — requested on launch (see
+	     MainViewController.swift's requestTrackingAuthorizationIfNeeded)
+	     purely so Facebook's SDK releases the account's email field on
+	     native Facebook Login; Remar does not track people or use this
+	     data for advertising. -->
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Remar asks this so Facebook can share your account email with us when you sign in with Facebook. Remar does not track you or use this for advertising.</string>
 	<!-- remote-notification lets iOS deliver silent/background pushes and is
 	     also what makes "Background App Refresh" appear as a real toggle on
 	     this app's Settings page — see utils/pushNotifications.js. -->

@@ -1,4 +1,5 @@
 import Capacitor
+import AppTrackingTransparency
 
 // Registers PasskeyPlugin (client/ios/App/App/PasskeyPlugin.swift) in code,
 // instead of via capacitor.config.json's "packageClassList".
@@ -22,5 +23,25 @@ import Capacitor
 class MainViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(PasskeyPlugin())
+        requestTrackingAuthorizationIfNeeded()
+    }
+
+    // App Tracking Transparency (ATT). Without the user granting this,
+    // Facebook's native iOS SDK silently restricts what profile data it
+    // hands back from the Graph API — specifically, GET /me omits the
+    // email field even when the "email" permission was granted and the
+    // access token validates fine. That was the root cause of native
+    // Facebook Login failing on-device with "Your Facebook account has no
+    // email address available to sign in with" (see server/routes/auth.js's
+    // /facebook route) despite working correctly on web. Requesting ATT —
+    // regardless of whether the person allows or denies it — is what makes
+    // Facebook release the email field again; this app doesn't otherwise
+    // use the tracking data itself. A short delay avoids requesting before
+    // the window is actually key/visible, which iOS silently no-ops.
+    private func requestTrackingAuthorizationIfNeeded() {
+        guard #available(iOS 14, *) else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            ATTrackingManager.requestTrackingAuthorization { _ in }
+        }
     }
 }
