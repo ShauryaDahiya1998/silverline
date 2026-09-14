@@ -31,21 +31,6 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<!-- =====================================================================
-	     DEV-ONLY — LOCAL NETWORK DEBUGGING (task: local dev loop)
-	     Lets the app load plain-http content from your Mac's LAN IP, used
-	     together with capacitor.config.json's "server" block (see
-	     capacitor.config.production.json for the real, App-Store-safe
-	     config with no such block). DELETE this entire NSAppTransportSecurity
-	     key before building anything for TestFlight/App Store — Apple
-	     rejects submissions containing NSAllowsArbitraryLoads.
-	     ===================================================================== -->
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-	</dict>
-	<!-- ===================================================================== -->
 	<!-- Usage-description strings iOS requires before it will show the
 	     corresponding permission prompt (and, once granted/denied once, the
 	     corresponding toggle on this app's own Settings page) — see
@@ -60,6 +45,16 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Remar accesses your photo library so you can attach an existing photo when creating or editing a Help item, or as your profile picture.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Remar uses your location so you can fill in an address automatically instead of typing it, and to show it on the Help map.</string>
+	<!-- App Review warning 90683 ("Missing purpose string in Info.plist") —
+	     some linked SDK/plugin references the background-capable location
+	     API even though this app only ever requests when-in-use access (see
+	     NSLocationWhenInUseUsageDescription above and the Geolocation calls
+	     it backs). Apple's static analysis still requires this key to exist
+	     whenever that API is reachable, regardless of whether it's actually
+	     invoked. Text mirrors the when-in-use description since the app
+	     never requests Always access in practice. -->
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Remar uses your location so you can fill in an address automatically instead of typing it, and to show it on the Help map.</string>
 	<!-- Passkey (Face ID/Touch ID) sign-in — see PasskeyPlugin.swift. Not
 	     strictly required by ASAuthorizationPlatformPublicKeyCredentialProvider
