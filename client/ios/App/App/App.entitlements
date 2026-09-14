@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- App Sandbox is required for any Mac Catalyst destination (and for
+	     Mac App Store distribution). Apple ignores this key entirely on
+	     iOS/iPadOS builds using the same target, so it's safe to apply here
+	     for all destinations rather than maintaining a second entitlements
+	     file just for Catalyst. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Outgoing HTTPS calls to the Render backend (api.js's baseURL) —
+	     without this, every network request fails silently under sandbox
+	     on Mac Catalyst. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- New Help photo capture (@capacitor/camera). -->
+	<key>com.apple.security.device.camera</key>
+	<true/>
+	<!-- Region/location features (@capacitor/geolocation). -->
+	<key>com.apple.security.personal-information.location</key>
+	<true/>
+</dict>
+</plist>
