@@ -17,7 +17,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 // (capacitor.config.json's appId).
 const APP_STORE_ID = '';
 const GOOGLE_PLACE_ID = '';
-const ANDROID_PACKAGE = 'ch.remarschweiz.app';
+const ANDROID_PACKAGE = 'silverline.remar.app.ch';
 
 const PUBLIC_POST_LINKS = [
   {

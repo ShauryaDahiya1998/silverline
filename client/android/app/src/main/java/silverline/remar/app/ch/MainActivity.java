@@ -1,4 +1,4 @@
-package ch.remarschweiz.app;
+package silverline.remar.app.ch;
 
 import com.getcapacitor.BridgeActivity;
 
