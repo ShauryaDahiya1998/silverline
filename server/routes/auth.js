@@ -218,40 +218,98 @@ resolve(parsed);
 });
 }
 
+// Facebook Limited Login fallback — used when the person declines App
+// Tracking Transparency on iOS (see MainViewController.swift's ATT request
+// and client/src/pages/DM/Login.jsx's handleFacebookLoginNative). In that
+// case iOS's Facebook SDK returns a null classic access token and instead
+// hands back a signed OpenID Connect JWT with the profile embedded
+// directly in its claims (see @capawesome/capacitor-facebook-sign-in's own
+// README: "the accessToken property in the sign-in result is null... use
+// the authenticationToken (JWT) instead"). We independently verify that
+// JWT's signature against Facebook's published public keys before
+// trusting anything in it — never trust an unverified token.
+async function verifyFacebookAuthenticationToken(token, fbAppId, expectedNonce) {
+const decodedHeader = jwt.decode(token, { complete: true })?.header;
+if (!decodedHeader?.kid) throw new Error('Invalid Facebook authentication token');
+const jwks = await httpsGetJson('https://www.facebook.com/.well-known/oauth/openid/jwks/');
+const jwk = (jwks.keys || []).find(k => k.kid === decodedHeader.kid);
+if (!jwk) throw new Error('Invalid Facebook authentication token (unknown signing key)');
+const publicKey = crypto.createPublicKey({ key: jwk, format: 'jwk' }).export({ type: 'spki', format: 'pem' });
+const claims = jwt.verify(token, publicKey, {
+algorithms: ['RS256'],
+audience: fbAppId,
+issuer: ['https://facebook.com', 'https://www.facebook.com'],
+});
+// Only enforced when Facebook actually includes the claim — guards
+// against replaying a captured token, without hard-failing logins if
+// the claim is ever named/shaped differently than expected.
+if (expectedNonce && claims.nonce && claims.nonce !== expectedNonce) {
+throw new Error('Invalid Facebook authentication token (nonce mismatch)');
+}
+return claims; // { sub, email, name, picture, ... }
+}
+
 // Facebook Login — same "sign in only" shape as Google: the access token
-// proves who the person is on Facebook's side, and we log them into their
-// existing REMAR account if the Facebook email matches one.
+// (or, as a fallback, the Limited Login authentication token) proves who
+// the person is on Facebook's side, and we log them into their existing
+// REMAR account if the Facebook email matches one.
 router.post('/facebook', async (req, res) => {
 // .trim() guards against a stray trailing newline/space in the token or in
 // the Render-dashboard env vars (sync: false, so these are hand-pasted) —
 // that's enough by itself to make Facebook's debug_token endpoint reject
 // the request with "Cannot parse access token".
 const accessToken = (req.body.accessToken || '').trim();
-if (!accessToken) return res.status(400).json({ error: 'Missing Facebook access token' });
+const authenticationToken = (req.body.authenticationToken || '').trim();
+const nonce = (req.body.nonce || '').trim();
+if (!accessToken && !authenticationToken) {
+return res.status(400).json({ error: 'Missing Facebook sign-in token' });
+}
 const fbAppId = (process.env.FACEBOOK_APP_ID || '').trim();
 const fbAppSecret = (process.env.FACEBOOK_APP_SECRET || '').trim();
-if (!fbAppId || !fbAppSecret) {
+if (!fbAppId || (accessToken && !fbAppSecret)) {
 return res.status(500).json({ error: 'Facebook sign-in is not configured on this server' });
 }
 try {
+let email = null;
+let name = null;
+
+// Classic access-token path (works whenever ATT was granted, or on web).
+if (accessToken) {
 // Confirm the token was actually issued for our app (not lifted from a
 // different site) before trusting anything it says about the user.
 const debug = await httpsGetJson(
 `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(fbAppId + '|' + fbAppSecret)}`
 );
 console.log('[facebook-debug-token]', JSON.stringify(debug.data), 'expected app_id:', fbAppId, 'token len:', accessToken.length, 'token prefix:', accessToken.slice(0, 6));
-if (!debug.data?.is_valid || debug.data.app_id !== fbAppId) {
-return res.status(401).json({ error: 'Invalid Facebook sign-in' });
-}
-
+if (debug.data?.is_valid && debug.data.app_id === fbAppId) {
 const profile = await httpsGetJson(
 `https://graph.facebook.com/me?fields=id,email,name&access_token=${encodeURIComponent(accessToken)}`
 );
-if (!profile.email) {
+email = profile.email || null;
+name = profile.name || null;
+} else if (!authenticationToken) {
+// No Limited Login fallback available either — this really is an
+// invalid/stolen token, not just an ATT-related email gap.
+return res.status(401).json({ error: 'Invalid Facebook sign-in' });
+}
+}
+
+// Limited Login fallback — used when ATT was declined (accessToken is
+// null from the client entirely) or, as seen on real devices, when a
+// valid classic access token still comes back with no email on /me
+// (also an ATT side effect; see MainViewController.swift).
+if (!email && authenticationToken) {
+const claims = await verifyFacebookAuthenticationToken(authenticationToken, fbAppId, nonce);
+console.log('[facebook-limited-login]', JSON.stringify({ sub: claims.sub, email: claims.email, aud: claims.aud, iss: claims.iss }));
+email = claims.email || null;
+name = claims.name || name;
+}
+
+if (!email) {
 return res.status(400).json({ error: 'Your Facebook account has no email address available to sign in with' });
 }
 
-const result = await db.query('SELECT * FROM users WHERE email = $1', [profile.email]);
+const result = await db.query('SELECT * FROM users WHERE email = $1', [email]);
 const user = result.rows[0];
 if (!user) {
 return res.status(404).json({ error: 'Account not registered, please click on register at the bottom.', notFound: true });

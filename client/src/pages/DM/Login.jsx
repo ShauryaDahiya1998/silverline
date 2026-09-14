@@ -194,12 +194,23 @@ document.body.appendChild(script);
 const handleFacebookLoginNative = async () => {
 showAppError('');
 try {
-const result = await FacebookSignIn.signIn();
-if (!result.accessToken?.token) {
+// A nonce makes the native SDK also return an authenticationToken (a
+// signed JWT) alongside the classic access token. That's what lets the
+// backend fall back to it when the person declines App Tracking
+// Transparency — iOS then makes the SDK return a null access token and
+// silently switch to Limited Login instead (see MainViewController.swift's
+// ATT comment and server/routes/auth.js's verifyFacebookAuthenticationToken).
+const nonce = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const result = await FacebookSignIn.signIn({ nonce });
+if (!result.accessToken?.token && !result.authenticationToken) {
 showAppError('Facebook sign-in was cancelled');
 return;
 }
-const res = await api.post('/auth/facebook', { accessToken: result.accessToken.token });
+const res = await api.post('/auth/facebook', {
+accessToken: result.accessToken?.token,
+authenticationToken: result.authenticationToken,
+nonce,
+});
 login(res.data.user, res.data.token);
 goToRoleHome(res.data.user.role);
 } catch (err) {
