@@ -57,6 +57,12 @@ captures/
 #*.jks
 #*.keystore
 
+# Release signing credentials (storeFile path + passwords) — read by
+# app/build.gradle's signingConfigs.release. Real values live only in your
+# local copy of this file; keystore.properties.example (committed) shows
+# the format to copy from.
+keystore.properties
+
 # External native build folder generated in Android Studio 2.2 and later
 .externalNativeBuild
 .cxx/
