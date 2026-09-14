@@ -8,7 +8,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         window = UIWindow(windowScene: windowScene)
-        window?.rootViewController = CAPBridgeViewController()
+        // MainViewController (not the plain CAPBridgeViewController) — its
+        // capacitorDidLoad() override is what registers PasskeyPlugin (see
+        // that file's own header comment). Using the base class here meant
+        // that override never ran, so PasskeyPlugin's JS header was never
+        // injected into Capacitor.PluginHeaders, producing "PasskeyPlugin
+        // not implemented on iOS" regardless of Main.storyboard/module-name
+        // fixes, since this code path never consulted the storyboard at all.
+        window?.rootViewController = MainViewController()
         window?.makeKeyAndVisible()
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
