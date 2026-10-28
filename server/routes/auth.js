@@ -280,7 +280,11 @@ if (accessToken) {
 const debug = await httpsGetJson(
 `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(fbAppId + '|' + fbAppSecret)}`
 );
-console.log('[facebook-debug-token]', JSON.stringify(debug.data), 'expected app_id:', fbAppId, 'token len:', accessToken.length, 'token prefix:', accessToken.slice(0, 6));
+// Enough to tell a misconfigured app_id from a genuinely bad token, which
+// is what these two branches actually need to be distinguished — without
+// writing the signing-in person's Facebook user id, or any part of their
+// access token, into the server log on every attempt.
+console.log('[facebook-debug-token] valid:', !!debug.data?.is_valid, 'app_id matches:', debug.data?.app_id === fbAppId);
 if (debug.data?.is_valid && debug.data.app_id === fbAppId) {
 const profile = await httpsGetJson(
 `https://graph.facebook.com/me?fields=id,email,name&access_token=${encodeURIComponent(accessToken)}`
@@ -300,7 +304,9 @@ return res.status(401).json({ error: 'Invalid Facebook sign-in' });
 // (also an ATT side effect; see MainViewController.swift).
 if (!email && authenticationToken) {
 const claims = await verifyFacebookAuthenticationToken(authenticationToken, fbAppId, nonce);
-console.log('[facebook-limited-login]', JSON.stringify({ sub: claims.sub, email: claims.email, aud: claims.aud, iss: claims.iss }));
+// Same reasoning as the debug_token log above: whether the claims carried
+// a usable email is the diagnostic bit, the address itself isn't.
+console.log('[facebook-limited-login] verified, email present:', !!claims.email);
 email = claims.email || null;
 name = claims.name || name;
 }
